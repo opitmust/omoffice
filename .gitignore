@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+*.pyc
+
+# Yarım kalmış kayıtlar ve Word kilit dosyaları
+.~*.tmp
+~$*
+
+# Test çıktıları ve günlükler
+_out/
+*.log

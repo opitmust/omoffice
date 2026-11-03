@@ -1,0 +1,6 @@
+* text=auto
+# cmd.exe, LF satır sonlu .bat dosyalarında goto etiketlerini kaçırabilir
+*.bat text eol=crlf
+# Sözlükler kaynaklarıyla bayt bayt aynı kalsın
+omoffice/dicts/*.aff -text
+omoffice/dicts/*.dic -text
