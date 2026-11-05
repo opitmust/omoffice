@@ -24,6 +24,9 @@ PLACEHOLDER_PROP = _UP + 6  # şablondaki "[buraya yazın]" yer tutucu metni
 # Paragraf stil adı (QTextBlockFormat üzerinde)
 STYLE_PROP = _UP + 10
 TOC_PROP = _UP + 11      # içindekiler paragrafı
+KEEP_NEXT_PROP = _UP + 12  # 'sonrakiyle birlikte tut' (tablo başlığı vb.; başlıklarda kendiliğinden)
+KEEP_AUTO_PROP = _UP + 13  # bu sayfa sonunu 'sonrakiyle birlikte tut' koydu (kullanıcının değil)
+KEEP_GAP_PROP = _UP + 14   # taşımadan önceki paragrafın asıl alt boşluğu (Qt onu yeni sayfaya taşır)
 
 # Şablondaki resim alanları ("Logo ekle", "Fotoğraf ekle"): resim adı bu önekle başlar; .docx'te resmin
 # açıklamasına (alt metin) "OmOffice:<tür>" yazılır, yeniden açınca alan yine tanınır.

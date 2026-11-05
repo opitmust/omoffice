@@ -97,9 +97,9 @@ key(Qt.Key.Key_Delete)
 t = find("Bütçe")
 check(t is not None and t.rows() == 6 and t.columns() == 4, "birkaç hücre seçip Delete yalnızca içeriği temizler")
 
-fresh(); n = len(tables()); t = find("1. ARA")
+fresh(); n = len(tables()); t = find("Görevi")
 e.setTextCursor(t.cellAt(0, 0).firstCursorPosition()); w.actions["del_table"].trigger(); app.processEvents()
-check(len(tables()) == n - 1, "kapak bandı 'Tabloyu Sil' ile silinir")
+check(len(tables()) == n - 1, "imza tablosu 'Tabloyu Sil' ile silinir")
 e.undo(); app.processEvents()
 check(len(tables()) == n, "geri al tabloyu geri getirir")
 

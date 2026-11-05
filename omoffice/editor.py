@@ -16,6 +16,7 @@ from PySide6.QtWidgets import QTextEdit, QFrame, QMenu
 from .common import (
     TC_TYPE, TC_AUTHOR, TC_DATE, STYLE_PROP, STYLES, DEFAULT_FONT, DEFAULT_SIZE,
     COMMENT_PROP, FOOTNOTE_PROP, TOC_PROP, PLACEHOLDER_PROP, IMAGE_SLOT_KINDS, image_slot,
+    KEEP_NEXT_PROP, KEEP_AUTO_PROP, KEEP_GAP_PROP,
     PageSetup, mm2px, pt2px, turkish_upper, turkish_lower, turkish_title, turkish_sort_key,
 )
 from .spell import DocHighlighter
@@ -168,10 +169,16 @@ class PageEdit(QTextEdit):
         self.highlighter = DocHighlighter(doc, self.spell, True, self._comment_state)
         doc.contentsChanged.connect(self.pageInfoChanged)
         doc.contentsChanged.connect(self._invalidate)
+        doc.undoCommandAdded.connect(self._schedule_keep)
         self._invalidate()
         self.apply_page_setup()
         if meta.get("sections"):
             self._apply_sections(meta["sections"])
+        # yeni açılan belge: düzeni hemen uygula; geri alınacak bir şey olmasın
+        modified = doc.isModified()
+        self.apply_keep_with_next()
+        doc.clearUndoRedoStacks()
+        doc.setModified(modified)
         self.documentReplaced.emit()
         self.commentsChanged.emit()
         if old is not None and old is not doc:
@@ -279,6 +286,148 @@ class PageEdit(QTextEdit):
         # Yerleşim tembel yapılır; sayfa sayısı için sona kadar zorla
         doc.documentLayout().blockBoundingRect(doc.lastBlock())
         return max(1, doc.pageCount())
+
+    # ------------------------------------------------ sonrakiyle birlikte tut
+    # Başlıklar ve tablo başlıkları (KEEP_NEXT_PROP) sayfanın en altında yalnız kalmaz: ardından gelen
+    # paragraf/tablo sonraki sayfada başlıyorsa onlar da oraya taşınır (Word'deki keepNext). Taşıma, bloğa
+    # KEEP_AUTO_PROP ile işaretli bir sayfa sonu koyarak yapılır; .docx'e sayfa sonu değil keepNext yazılır.
+    # Değişiklik her düzenlemenin geri alma adımına eklenir; böylece Ctrl+Z ikisini birlikte geri alır.
+    def _schedule_keep(self):
+        if getattr(self, "_keeping", False):
+            return
+        from PySide6.QtCore import QTimer
+        if not hasattr(self, "_keep_timer"):
+            self._keep_timer = QTimer(self)
+            self._keep_timer.setSingleShot(True)
+            self._keep_timer.setInterval(350)
+            self._keep_timer.timeout.connect(self._keep_after_edit)
+        self._keep_steps = self.document().availableUndoSteps()
+        self._keep_timer.start()
+
+    def _keep_after_edit(self):
+        doc = self.document()
+        # arada geri al / yinele yapıldıysa dokunma (geçmiş tutarlı kalsın)
+        if doc.availableUndoSteps() != getattr(self, "_keep_steps", -1) or doc.isRedoAvailable():
+            return
+        self.apply_keep_with_next(join=True)
+
+    @staticmethod
+    def _keeps(block):
+        bf = block.blockFormat()
+        return (bf.headingLevel() > 0 or bf.hasProperty(KEEP_NEXT_PROP)) and bool(block.text().strip()) \
+            and QTextCursor(block).currentTable() is None
+
+    def _keep_target(self, block):
+        """Bloğun birlikte tutulacağı sonraki içerik (görünmez boşluk satırları atlanır)."""
+        nb = block.next()
+        while nb.isValid() and not nb.text() and self._is_spacer(nb) and QTextCursor(nb).currentTable() is None:
+            nb = nb.next()
+        return nb if nb.isValid() else None
+
+    def _page_y(self, pos):
+        """Konumun sayfa numarası ve sayfa içindeki y (metin alanının üstünden, px)."""
+        page = self.page_of_position(pos, self.document())   # sayfa boyutu geçişin başında bir kez düzeltilir
+        doc = self.document()
+        block = doc.findBlock(pos)
+        y = doc.documentLayout().blockBoundingRect(block).top()
+        lay = block.layout()
+        if lay is not None and lay.lineCount():
+            y += lay.lineAt(0).y()
+        _, ph = self.page_px()
+        return page, y - (page - 1) * ph - mm2px(self.setup.top_mm)
+
+    def _set_auto_break(self, block, on, join):
+        c = QTextCursor(block)
+        if join:
+            c.joinPreviousEditBlock()
+        else:
+            c.beginEditBlock()
+        bf = block.blockFormat()
+        if on:
+            # Word sayfanın başına kayan paragrafın üst boşluğunu yok sayar; OmOffice de öyle göstersin.
+            # Asıl boşluk özelliğin değerinde saklanır (geri konur, .docx'e o yazılır).
+            bf.setPageBreakPolicy(bf.pageBreakPolicy() | QTextFormat.PageBreakFlag.PageBreak_AlwaysBefore)
+            bf.setProperty(KEEP_AUTO_PROP, float(bf.topMargin()))
+            bf.setTopMargin(0)
+        else:
+            bf.setPageBreakPolicy(QTextFormat.PageBreakFlag.PageBreak_Auto)
+            bf.setTopMargin(float(bf.property(KEEP_AUTO_PROP) or 0))
+            bf.clearProperty(KEEP_AUTO_PROP)
+        c.setBlockFormat(bf)
+        # Qt önceki paragrafın alt boşluğunu sayfa sonundan sonra da uygular, Word uygulamaz
+        prev = block.previous()
+        if on and prev.isValid() and QTextCursor(prev).currentTable() is None and prev.blockFormat().bottomMargin() > 0:
+            pf = prev.blockFormat()
+            pf.setProperty(KEEP_GAP_PROP, float(pf.bottomMargin()))
+            pf.setBottomMargin(0)
+            QTextCursor(prev).setBlockFormat(pf)
+        c.endEditBlock()
+
+    def _restore_gap(self, block, join):
+        c = QTextCursor(block)
+        if join:
+            c.joinPreviousEditBlock()
+        else:
+            c.beginEditBlock()
+        bf = block.blockFormat()
+        bf.setBottomMargin(float(bf.property(KEEP_GAP_PROP) or 0))
+        bf.clearProperty(KEEP_GAP_PROP)
+        c.setBlockFormat(bf)
+        c.endEditBlock()
+
+    def apply_keep_with_next(self, join=False):
+        doc = self.document()
+        self._keeping = True
+        try:
+            self._fix_page_size()
+            autos, gaps = [], []
+            b = doc.begin()
+            while b.isValid():
+                if b.blockFormat().hasProperty(KEEP_AUTO_PROP):
+                    autos.append(b)
+                if b.blockFormat().hasProperty(KEEP_GAP_PROP):
+                    gaps.append(b)
+                b = b.next()
+            for b in autos:   # eskimiş olabilir: kaldır, aşağıda gerekiyorsa yeniden konur
+                self._set_auto_break(b, False, join)
+                join = True
+            for b in gaps:
+                self._restore_gap(b, join)
+                join = True
+            if autos or gaps:
+                self._fix_page_size()
+            top_gap = pt2px(14)
+            skip = set()   # sayfanın başında olduğu için taşınamayan bloklar
+            for _ in range(200):
+                bad = None
+                b = doc.begin()
+                while b.isValid():
+                    if self._keeps(b) and b.blockNumber() not in skip:
+                        t = self._keep_target(b)
+                        if t is not None:
+                            pb, _ = self._page_y(b.position())
+                            pt, _ = self._page_y(t.position())
+                            if pt > pb:
+                                bad = b
+                                break
+                    b = b.next()
+                if bad is None:
+                    break
+                # zincirin başı: hemen öncesindeki birlikte-tutulan bloklar da taşınır
+                start = bad
+                prev = start.previous()
+                while prev.isValid() and self._keeps(prev) and self._keep_target(prev) == start \
+                        and self._page_y(prev.position())[0] == self._page_y(start.position())[0]:
+                    start, prev = prev, prev.previous()
+                page, y = self._page_y(start.position())
+                if y <= top_gap or start.blockFormat().pageBreakPolicy() & QTextFormat.PageBreakFlag.PageBreak_AlwaysBefore:
+                    skip.add(bad.blockNumber())   # zaten sayfanın başında: taşımak yardım etmez, sonrakine geç
+                    continue
+                self._set_auto_break(start, True, join)
+                join = True
+                self._fix_page_size()   # Qt yeniden yerleşimde sayfa yüksekliğini sıfırlar
+        finally:
+            self._keeping = False
 
     def page_of_position(self, pos, doc=None):
         if doc is None:
@@ -1756,10 +1905,13 @@ class PageEdit(QTextEdit):
         tbf.setBottomMargin(pt2px(8))
         tbf.setProperty(STYLE_PROP, "Normal")
         tbf.setProperty(TOC_PROP, True)
+        # başlığın rengi/boyutu şablondan gelir (akademik belgelerde siyah, 1. düzey başlık boyutu)
+        title_color, title_size = getattr(self, "toc_title_style", ("#2F5496", 16))
+        body_size = self.document().defaultFont().pointSizeF() or DEFAULT_SIZE
         tcf = QTextCharFormat()
-        tcf.setFontPointSize(16)
+        tcf.setFontPointSize(title_size)
         tcf.setFontWeight(QFont.Weight.Bold)
-        tcf.setForeground(QColor("#2F5496"))
+        tcf.setForeground(QColor(title_color))
         c.insertBlock(tbf, tcf)
         c.movePosition(QTextCursor.MoveOperation.PreviousBlock)
         c.insertText("İçindekiler", tcf)
@@ -1773,7 +1925,7 @@ class PageEdit(QTextEdit):
             bf.setProperty(TOC_PROP, True)
             bf.setTabPositions([QTextOption.Tab(tw - pt2px(14 * (lvl - 1)) - 2, QTextOption.TabType.RightTab)])
             cf = QTextCharFormat()
-            cf.setFontPointSize(DEFAULT_SIZE)
+            cf.setFontPointSize(body_size)
             cf.setFontWeight(QFont.Weight.Bold if lvl == 1 else QFont.Weight.Normal)
             cf.setForeground(QColor("#000000"))
             c.insertText(f"{text}\t0", cf)

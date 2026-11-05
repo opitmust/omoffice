@@ -15,7 +15,7 @@ from PySide6.QtGui import (
     QTextLength, QTextListFormat, QTextTableFormat,
 )
 
-from .common import STYLE_PROP, PLACEHOLDER_PROP, IMAGE_SLOT_PREFIX, pt2px, mm2px, turkish_upper
+from .common import STYLE_PROP, PLACEHOLDER_PROP, IMAGE_SLOT_PREFIX, KEEP_NEXT_PROP, pt2px, mm2px, turkish_upper
 from .guide import KINDS, match_section, format_reference, in_text
 
 MONTHS = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül",
@@ -49,21 +49,25 @@ FONT_SETS = {
 }
 
 # Türe göre varsayılan tasarım (palet, yazı tipi takımı)
+# Evrensel varsayılanlar: akademik belgeler APA / üniversite yazım kılavuzları (Times New Roman 12 pt,
+# 1,5 satır, siyah numaralı başlıklar, yalnızca yatay çizgili tablolar); iş belgeleri Calibri 11 pt;
+# resmî yazışma Times New Roman 12 pt tek satır aralığı. Renk ve yazı tipi sihirbazda değiştirilebilir.
+ACADEMIC = {"makale", "arastirma", "tez", "odev", "lab", "proje", "ara_rapor", "literatur", "deneme"}
 KIND_DESIGN = {
-    "makale": ("Lacivert", "Klasik (Cambria)"),
-    "arastirma": ("Okyanus", "Modern (Segoe UI)"),
+    "makale": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
+    "arastirma": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
     "tez": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
-    "odev": ("Zümrüt", "Ofis (Calibri)"),
-    "lab": ("Okyanus", "Ofis (Calibri)"),
-    "proje": ("Mor", "Modern (Segoe UI)"),
-    "ara_rapor": ("Lacivert", "Klasik (Cambria)"),
-    "literatur": ("Bordo", "Klasik (Cambria)"),
-    "deneme": ("Bordo", "Zarif (Georgia)"),
-    "rapor": ("Grafit", "Modern (Segoe UI)"),
+    "odev": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
+    "lab": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
+    "proje": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
+    "ara_rapor": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
+    "literatur": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
+    "deneme": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
+    "rapor": ("Lacivert", "Ofis (Calibri)"),
     "dilekce": ("Siyah-Beyaz", "Resmî (Times New Roman)"),
-    "mektup": ("Lacivert", "Zarif (Georgia)"),
-    "toplanti": ("Zümrüt", "Modern (Segoe UI)"),
-    "ozgecmis": ("Lacivert", "Modern (Segoe UI)"),
+    "mektup": ("Lacivert", "Resmî (Times New Roman)"),
+    "toplanti": ("Lacivert", "Ofis (Calibri)"),
+    "ozgecmis": ("Lacivert", "Ofis (Calibri)"),
     "bos": ("Lacivert", "Ofis (Calibri)"),
 }
 
@@ -86,6 +90,8 @@ class Theme:
     numbered: bool = False
     heading_caps: str = ""        # "" | "upper" | "small"
     heading_color: str = ""       # boşsa koyu ton
+    academic: bool = False        # siyah, kalın, numaralı başlıklar; APA tabloları; süs yok
+    table_style: str = "clean"    # "apa" (yalnızca yatay çizgiler) | "clean" (iş: açık başlık satırı)
 
     @property
     def h(self):
@@ -97,16 +103,23 @@ def make_theme(kind, palette=None, fontset=None):
     accent, dark, tint = PALETTES.get(palette or pal_name, PALETTES[pal_name])
     head, body, title, size, line = FONT_SETS.get(fontset or font_name, FONT_SETS[font_name])
     t = Theme(accent, dark, tint, head, body, title, size, line)
-    if kind in ("tez", "dilekce"):
+    if kind in ACADEMIC:
+        t.academic, t.table_style = True, "apa"
         t.justify, t.first_indent = True, 12.5
-    if kind in ("makale", "literatur", "arastirma", "deneme", "ara_rapor"):
-        t.justify = True
-    if kind in ("makale", "literatur", "arastirma", "proje", "rapor", "ara_rapor"):
-        t.numbered = True
-    if kind == "tez":
-        t.heading_caps, t.heading_color = "upper", "#000000"
-    if kind in ("ozgecmis", "deneme"):
-        t.heading_caps = "small"
+        t.numbered = kind != "deneme"
+        t.heading_color = dark
+        if kind == "tez":
+            t.heading_caps = "upper"
+        if kind == "deneme":
+            t.line = 200           # MLA: çift satır aralığı
+    if kind == "dilekce":
+        t.justify, t.first_indent, t.line = True, 12.5, 115
+    if kind == "mektup":
+        t.line = 115
+    if kind in ("rapor", "toplanti"):
+        t.numbered = kind == "rapor"
+    if kind == "ozgecmis":
+        t.heading_caps, t.size, t.line = "small", min(t.size, 10.5), 110
     return t
 
 
@@ -274,7 +287,7 @@ class Builder:
         return f
 
     def bf(self, align=None, before=0.0, after=None, line=None, first=None, left=0.0, right=0.0, shade=None,
-           style="Normal", heading=0, page_break=False, rule=False, fixed=None):
+           style="Normal", heading=0, page_break=False, rule=False, fixed=None, keep=False):
         t = self.t
         b = QTextBlockFormat()
         if align is None:
@@ -297,6 +310,8 @@ class Builder:
             b.setBackground(QColor(shade))
         if page_break:
             b.setPageBreakPolicy(QTextFormat.PageBreakFlag.PageBreak_AlwaysBefore)
+        if keep:
+            b.setProperty(KEEP_NEXT_PROP, True)
         if rule:
             b.setProperty(QTextFormat.Property.BlockTrailingHorizontalRulerWidth,
                           QTextLength(QTextLength.Type.PercentageLength, 100))
@@ -352,13 +367,24 @@ class Builder:
     def heading(self, text, level=1, number=None, align=None, before=None, page_break=False, rule=None,
                 caps=None, color=None):
         t = self.t
-        size = {1: t.size * 1.55, 2: t.size * 1.22, 3: t.size * 1.08}[min(level, 3)]
+        lvl = min(level, 3)
         label = f"{number}  {text}" if number and t.numbered else text
         caps = t.heading_caps if caps is None else caps
         if caps == "upper" and level > 1:
             caps = ""
-        bfmt = self.bf(align=align or Qt.AlignmentFlag.AlignLeft, heading=min(level, 3),
-                       style=f"Başlık {min(level, 3)}", before=(18 if level == 1 else 12) if before is None else before,
+        if t.academic:
+            # APA / yazım kılavuzu: 1. düzey 14 pt kalın, 2. düzey 12 pt kalın, 3. düzey 12 pt kalın italik; siyah
+            size = {1: t.size + 2, 2: t.size, 3: t.size}[lvl]
+            bfmt = self.bf(align=align or Qt.AlignmentFlag.AlignLeft, heading=lvl, style=f"Başlık {lvl}",
+                           before=(18 if lvl == 1 else 12) if before is None else before, after=6,
+                           page_break=page_break, rule=bool(rule), line=115, first=0)
+            f = self.cf(font=t.head, size=size, bold=True, italic=lvl == 3, color=color or t.h, caps=caps)
+            self._emit(self.c, self.fresh, [(label, f)], bfmt)
+            self.fresh = False
+            return self
+        size = {1: t.size * 1.55, 2: t.size * 1.22, 3: t.size * 1.08}[lvl]
+        bfmt = self.bf(align=align or Qt.AlignmentFlag.AlignLeft, heading=lvl,
+                       style=f"Başlık {lvl}", before=(18 if level == 1 else 12) if before is None else before,
                        after=6 if level == 1 else 4, page_break=page_break,
                        rule=(level == 1 and t.numbered) if rule is None else rule, line=110, first=0)
         f = self.cf(font=t.head, size=size, bold=level > 1 or t.head not in ("Segoe UI Semibold", "Calibri Light"),
@@ -458,30 +484,76 @@ class Builder:
             f.setBackground(QColor(bg))
             cell.setFormat(f)
 
-    def table(self, rows, widths=None, header=True, zebra=True, size=None, align_right=(), bold_last=False):
-        t = self._table(len(rows), len(rows[0]), widths)
+    def table(self, rows, widths=None, header=True, zebra=None, size=None, align_right=(), bold_last=False,
+              style=None):
+        """Veri tablosu. style: "apa" (yalnızca üst, başlık altı ve alt çizgi; renk yok), "clean" (iş belgesi:
+        açık başlık satırı, ince yatay çizgiler) ya da "grid" (her hücre çizgili; çizelge ve formlar)."""
+        style = style or self.t.table_style
+        t = self._table(len(rows), len(rows[0]), widths, border=0, padding=4 if style == "apa" else 5)
         sz = size or self.t.size * 0.92
         for r, row in enumerate(rows):
             for c, val in enumerate(row):
                 is_h = header and r == 0
-                bg = self.t.accent if is_h else (self.t.tint if zebra and r % 2 == 0 and r > 0 else None)
+                bg = self.t.tint if is_h and style == "clean" else None
                 al = Qt.AlignmentFlag.AlignRight if c in align_right and not is_h else Qt.AlignmentFlag.AlignLeft
                 ph = isinstance(val, str) and val.startswith("[") and val.endswith("]")
                 txt = val[1:-1] if ph else val
                 self._fill(t.cellAt(r, c), [(txt, dict(size=sz, bold=is_h or (bold_last and r == len(rows) - 1),
-                                                       color="#FFFFFF" if is_h else None, placeholder=ph,
+                                                       color=self.t.dark if is_h else None, placeholder=ph,
                                                        align=al))], bg)
+        self.rule_table(t, style, header=header, total=bold_last)
         self._after_table(t)
         return self
 
+    def rule_table(self, t, style=None, header=True, total=False):
+        """Tablo çizgilerini hücre kenarlıklarıyla çizer (Word'e tcBorders olarak aynen gider)."""
+        style = style or self.t.table_style
+        dark, light = QColor(self.t.dark), QColor(self.t.border)
+        heavy, thin = pt2px(1.0), pt2px(0.5)
+        rows, cols = t.rows(), t.columns()
+        for r in range(rows):
+            for c in range(cols):
+                sides = {}
+                if style == "grid":
+                    sides = {k: (thin, dark) for k in ("top", "bottom", "left", "right")}
+                elif style == "apa":
+                    if r == 0:
+                        sides["top"] = (heavy, dark)
+                    if header and r == 0:
+                        sides["bottom"] = (thin, dark)
+                    if total and r == rows - 1:
+                        sides["top"] = (thin, dark)
+                    if r == rows - 1:
+                        sides["bottom"] = (heavy, dark)
+                else:  # clean
+                    sides["bottom"] = (heavy if (header and r == 0) or r == rows - 1 else thin,
+                                       dark if (header and r == 0) or r == rows - 1 else light)
+                    if total and r == rows - 1:
+                        sides["top"] = (thin, dark)
+                self._cell_borders(t.cellAt(r, c), sides)
+
+    @staticmethod
+    def _cell_borders(cell, sides):
+        if not sides:
+            return
+        f = cell.format().toTableCellFormat()
+        solid = QTextFrameFormat.BorderStyle.BorderStyle_Solid
+        for side, (w, col) in sides.items():
+            S = side.title()
+            getattr(f, f"set{S}Border")(w)
+            getattr(f, f"set{S}BorderStyle")(solid)
+            getattr(f, f"set{S}BorderBrush")(QBrush(col))
+        cell.setFormat(f)
+
     def caption(self, text, above=True):
-        """'Tablo 4.1. Açıklama' → kalın numara + italik açıklama."""
+        """'Tablo 4.1. Açıklama' → kalın numara + italik açıklama (APA: tablonun üstünde)."""
         import re
         m = re.match(r"^((?:Tablo|Şekil)\s+[\d.]*\d\.?)\s*(.*)$", text)
         num, rest = (m.group(1), m.group(2)) if m else ("", text)
-        return self.runs([(num + " ", dict(bold=True, size=self.t.size * 0.9)),
-                          (rest, dict(italic=True, size=self.t.size * 0.9))],
-                         after=3 if above else 10, first=0, align=Qt.AlignmentFlag.AlignLeft)
+        sz = self.t.size if self.t.academic else self.t.size * 0.9
+        return self.runs([(num + " ", dict(bold=True, size=sz)), (rest, dict(italic=True, size=sz))],
+                         before=6, after=3 if above else 10, first=0, align=Qt.AlignmentFlag.AlignLeft,
+                         line=115, keep=above)
 
     def band(self, paras, bg=None, padding=16):
         t = self._table(1, 1, border=0, padding=padding)
@@ -490,15 +562,33 @@ class Builder:
         return self
 
     def info_grid(self, pairs, label_w=32):
-        t = self._table(len(pairs), 2, [label_w, 100 - label_w], border=1.0, padding=6)
+        """Kapak/üst bilgi tablosu: etiket | değer, ince yatay çizgiler, dolgu yok."""
+        t = self._table(len(pairs), 2, [label_w, 100 - label_w], border=0, padding=5)
         for r, (lab, val) in enumerate(pairs):
-            self._fill(t.cellAt(r, 0), [(lab, dict(bold=True, size=self.t.size * 0.88, color=self.t.dark))],
-                       self.t.tint)
+            self._fill(t.cellAt(r, 0), [(lab, dict(bold=True, size=self.t.size * 0.9, color=self.t.dark))])
             if val:
                 self._fill(t.cellAt(r, 1), [(val, dict(size=self.t.size * 0.95))])
             else:
                 self._fill(t.cellAt(r, 1), [("…", dict(placeholder=True, size=self.t.size * 0.95))])
+        light, dark = QColor(self.t.border), QColor(self.t.dark)
+        for r in range(len(pairs)):
+            for c in range(2):
+                sides = {"bottom": (pt2px(0.5), light)}
+                if r == 0:
+                    sides["top"] = (pt2px(1.0), dark)
+                if r == len(pairs) - 1:
+                    sides["bottom"] = (pt2px(1.0), dark)
+                self._cell_borders(t.cellAt(r, c), sides)
         self._after_table(t)
+        return self
+
+    def info_lines(self, pairs, align=Qt.AlignmentFlag.AlignHCenter, size=None):
+        """Resmî kapaklardaki ortalı bilgi satırları: 'Hazırlayan: Ad Soyad'."""
+        sz = size or self.t.size
+        for lab, val in pairs:
+            self.runs([(f"{lab}: ", dict(bold=True, size=sz)),
+                       (val or f"[{lab}]", dict(size=sz, placeholder=not val))],
+                      align=align, first=0, after=2, line=115)
         return self
 
     def stat_boxes(self, items):
@@ -522,15 +612,16 @@ class Builder:
         return self.band(paras, bg=self.t.tint, padding=12)
 
     def signature_table(self, rows, cols=("Unvanı, Adı Soyadı", "Kurumu", "İmza")):
+        """İmza tablosu (form): tüm hücreler ince çizgili, dolgu yok."""
         data = [list(cols)] + [list(r) for r in rows]
-        t = self._table(len(data), len(cols), [40, 40, 20], border=1.0, padding=8)
+        t = self._table(len(data), len(cols), [40, 40, 20], border=0, padding=8)
         for r, row in enumerate(data):
             for c, val in enumerate(row):
                 hdr = r == 0
                 ph = not hdr and val.startswith("[")
                 self._fill(t.cellAt(r, c), [(val.strip("[]") if ph else val,
-                                             dict(bold=hdr, size=self.t.size * 0.9, placeholder=ph))],
-                           self.t.tint if hdr else None)
+                                             dict(bold=hdr, size=self.t.size * 0.92, placeholder=ph))])
+        self.rule_table(t, "grid")
         self._after_table(t)
         return self
 
@@ -600,56 +691,56 @@ def _references(b, opts):
 
 # ------------------------------------------------------------------ türlere özel şablonlar
 def _makale(b, a, opts, kind="makale"):
+    """Dergiye gönderim düzeni (APA 7 / yaygın dergi kılavuzları): ortalı başlık, yazar ve kurum bilgisi,
+    girintili öz, numaralı bölümler, APA tabloları, beyanlar ve kaynakça."""
     t = b.t
+    C, L = Qt.AlignmentFlag.AlignHCenter, Qt.AlignmentFlag.AlignLeft
     short = a("title")[:60] if a("title") else "Kısa Başlık"
     b.setup((25, 25, 25, 25), header=short, header_align="right", footer="{SAYFA}", different_first=True)
-    b.image(thin_band(t, b.tw, 5), b.tw, 5, after=8)
-    b.runs([("ARAŞTIRMA MAKALESİ" if kind == "makale" else "DERLEME MAKALESİ",
-             dict(bold=True, size=t.size * 0.78, color=t.accent, spacing=1.8)),
-            ("     ·     Cilt [—]  Sayı [—]  ·  " + _year(), dict(size=t.size * 0.78, color=t.muted))],
-           align=Qt.AlignmentFlag.AlignLeft, after=18, first=0)
     if a("title"):
-        b.p(a("title"), font=t.title_font, size=t.size * 2.0, bold=True, color=t.dark, style="Konu Başlığı",
-            align=Qt.AlignmentFlag.AlignLeft, after=6, line=105, first=0)
+        b.p(a("title"), font=t.title_font, size=t.size + 4, bold=True, style="Konu Başlığı", align=C,
+            after=6, line=115, first=0)
     else:
-        b.ph("Makale başlığı (10–15 sözcük)", font=t.title_font, size=t.size * 2.0, style="Konu Başlığı",
-             align=Qt.AlignmentFlag.AlignLeft, after=6, first=0)
-    b.ph("İngilizce başlık (English title)", size=t.size * 1.15, align=Qt.AlignmentFlag.AlignLeft, after=14, first=0)
-    authors = [x.strip() for x in (a("author") or "").split(";") if x.strip()] or ["Yazar Adı Soyadı"]
+        b.ph("Makale başlığı (10–15 sözcük)", font=t.title_font, size=t.size + 4, bold=True, style="Konu Başlığı",
+             align=C, after=6, line=115, first=0)
+    b.ph("İngilizce başlık (English title)", size=t.size, align=C, after=14, first=0, line=115)
+    authors = [x.strip() for x in (a("author") or "").split(";") if x.strip()] or ["[Yazar Adı Soyadı]"]
     parts = []
     for i, au in enumerate(authors, 1):
-        parts += [(au, dict(bold=True, size=t.size * 1.05, color=t.text)), (str(i), dict(sup=True, color=t.accent)),
-                  (",  " if i < len(authors) else "", dict())]
-    b.runs(parts, align=Qt.AlignmentFlag.AlignLeft, after=4, first=0)
+        ph = au.startswith("[")
+        parts += [(au, dict(size=t.size, placeholder=ph)), (str(i), dict(sup=True)),
+                  (", " if i < len(authors) else "", dict())]
+    b.runs(parts, align=C, after=4, first=0, line=115)
     for i, _ in enumerate(authors, 1):
-        b.runs([(str(i), dict(sup=True, color=t.accent, size=t.size * 0.82)),
-                (" " + (a("institution") or ""), dict(italic=True, size=t.size * 0.82, color=t.muted)),
-                (" [Bölüm, Şehir, Ülke · e-posta · ORCID: 0000-0000-0000-0000]",
-                 dict(italic=True, size=t.size * 0.82, placeholder=True))],
-               align=Qt.AlignmentFlag.AlignLeft, after=1, first=0)
-    b.runs([("Geliş: ", dict(bold=True, size=t.size * 0.78, color=t.muted)),
-            ("[gg.aa.yyyy]", dict(size=t.size * 0.78, placeholder=True)),
-            ("   Kabul: ", dict(bold=True, size=t.size * 0.78, color=t.muted)),
-            ("[gg.aa.yyyy]", dict(size=t.size * 0.78, placeholder=True)),
-            ("   DOI: ", dict(bold=True, size=t.size * 0.78, color=t.muted)),
-            ("[10.xxxx/xxxx]", dict(size=t.size * 0.78, placeholder=True))],
-           align=Qt.AlignmentFlag.AlignLeft, before=6, after=14, first=0)
-    secs = _sections(kind)
+        b.runs([(str(i), dict(sup=True, size=t.size - 1)),
+                (" " + (a("institution") or ""), dict(italic=True, size=t.size - 1)),
+                (" [Bölüm, Şehir, Ülke]", dict(size=t.size - 1, placeholder=True))],
+               align=C, after=0, first=0, line=115)
+    b.runs([("Sorumlu yazar: ", dict(size=t.size - 1)),
+            ("[e-posta · ORCID 0000-0000-0000-0000]", dict(size=t.size - 1, placeholder=True))],
+           align=C, before=4, after=14, first=0, line=115)
     n = 0
-    for heading, level, hint in secs:
+    for heading, level, hint in _sections(kind):
         low = heading.lower()
         if low in ("özet", "abstract"):
             kw_label = "Anahtar Kelimeler:" if low == "özet" else "Keywords:"
             kw_val = a("keywords") if low == "özet" else ""
-            b.heading(heading, 2, before=4, rule=False, caps="small", color=t.accent)
-            b.band([
-                (hint, dict(placeholder=True, align=Qt.AlignmentFlag.AlignJustify, size=t.size * 0.95, after=6)),
-                ([(kw_label + " ", dict(bold=True, size=t.size * 0.9, color=t.dark)),
-                  (kw_val or "[3–5 kavram, virgülle]", dict(size=t.size * 0.9, placeholder=not kw_val))], dict(after=0)),
-            ], bg=t.tint, padding=12)
+            b.heading(heading, 2, align=C, before=6)
+            b.ph(hint, size=t.size - 1, left=7, right=7, first=0, line=115, after=4,
+                 align=Qt.AlignmentFlag.AlignJustify)
+            b.runs([(kw_label + " ", dict(bold=True, size=t.size - 1)),
+                    (kw_val or "[3–5 kavram, virgülle]", dict(size=t.size - 1, placeholder=not kw_val))],
+                   left=7, right=7, first=0, line=115, after=10, align=L)
             continue
         if low == "kaynakça":
-            b.heading(heading, 1, number=None)
+            b.heading("Beyanlar", 1)
+            for lab, txt in (("Etik kurul onayı: ", "Kurul adı, tarih ve sayı."),
+                             ("Çıkar çatışması: ", "Yazarlar çıkar çatışması olmadığını beyan eder."),
+                             ("Yazar katkıları: ", "Fikir, tasarım, veri toplama, analiz, yazım."),
+                             ("Veri erişilebilirliği: ", "Verilere nasıl ulaşılabileceği.")):
+                b.runs([(lab, dict(bold=True)), (f"[{txt}]", dict(placeholder=True))], after=2, first=0,
+                       align=L)
+            b.heading(heading, 1)
             _references(b, opts)
             continue
         n += 1
@@ -671,12 +762,6 @@ def _makale(b, a, opts, kind="makale"):
                 b.caption("Tablo 2. İncelenen çalışmaların özeti")
                 b.table([["Yazar (Yıl)", "Örneklem", "Yöntem", "Temel bulgu"], ["[—]", "[—]", "[—]", "[—]"],
                          ["[—]", "[—]", "[—]", "[—]"], ["[—]", "[—]", "[—]", "[—]"]], widths=[22, 20, 20, 38])
-    b.heading("Beyanlar", 2, before=18, color=t.accent)
-    for lab, txt in (("Etik Kurul Onayı: ", "Kurul adı, tarih ve sayı."),
-                     ("Çıkar Çatışması: ", "Yazarlar çıkar çatışması olmadığını beyan eder."),
-                     ("Yazar Katkıları: ", "Fikir, tasarım, veri toplama, analiz, yazım.")):
-        b.runs([(lab, dict(bold=True, size=t.size * 0.88)), (f"[{txt}]", dict(size=t.size * 0.88, placeholder=True))],
-               after=3, first=0)
 
 
 def _tez(b, a, opts):
@@ -779,24 +864,62 @@ def _tez(b, a, opts):
     return True
 
 
-def _cover_modern(b, a, kind_label, subtitle_ph, info_pairs, art="waves"):
+def _cover_formal(b, a, kind_label, info_pairs, tc=True, subtitle=None, above_title=None):
+    """Resmî (üniversite/kurum) kapağı: her şey ortalı, süs yok; logo alanı tıklanınca resim seçilir."""
     t = b.t
-    b.image(art_band(t, b.tw, 150, art), b.tw, 150, after=26)
-    b.label(f"{kind_label}  ·  {_year()}")
-    if a("title"):
-        b.p(a("title"), font=t.title_font, size=t.size * 2.6, color=t.dark, style="Konu Başlığı", after=8, line=100,
-            first=0, align=Qt.AlignmentFlag.AlignLeft)
+    C = Qt.AlignmentFlag.AlignHCenter
+    big = t.size + 1
+    if tc:
+        b.p("T.C.", bold=True, size=big, align=C, first=0, after=0, line=115)
+    inst = a("institution")
+    b.p(turkish_upper(inst) if inst else "[ÜNİVERSİTE / KURUM ADI]", bold=True, size=big, align=C, first=0,
+        after=0, line=115, placeholder=not inst)
+    dep = a("department")
+    if dep:
+        b.p(turkish_upper(dep), bold=True, size=big, align=C, first=0, after=0, line=115)
     else:
-        b.ph("Başlık", font=t.title_font, size=t.size * 2.6, style="Konu Başlığı", after=8, first=0,
-             align=Qt.AlignmentFlag.AlignLeft)
-    b.ph(subtitle_ph, size=t.size * 1.25, after=30, first=0, align=Qt.AlignmentFlag.AlignLeft)
-    b.info_grid(info_pairs)
-    b.spacer(12)
-    b.image(logo_placeholder(t, 64), 64, 64, align=Qt.AlignmentFlag.AlignLeft, after=10, slot="logo")
-    b.image(thin_band(t, b.tw * 0.35, 4), b.tw * 0.35, 4, align=Qt.AlignmentFlag.AlignLeft, after=4)
-    b.p(a("institution") or "[Kurum adı]", bold=True, color=t.dark, placeholder=not a("institution"), first=0,
-        align=Qt.AlignmentFlag.AlignLeft, after=0)
-    b.p(_today(), color=t.muted, first=0, align=Qt.AlignmentFlag.AlignLeft)
+        b.ph("… Fakültesi / … Bölümü", size=t.size, align=C, first=0, after=0, line=115)
+    b.spacer(40)
+    b.image(logo_placeholder(t, 84), 84, 84, after=0, slot="logo")
+    b.spacer(84)
+    if above_title is not None:
+        b.p(above_title or "[Ders Adı]", size=t.size + 1, align=C, first=0, after=8, line=115,
+            placeholder=not above_title)
+    if a("title"):
+        b.p(a("title"), font=t.title_font, size=t.size + 6, bold=True, align=C, first=0, after=10, line=115,
+            style="Konu Başlığı")
+    else:
+        b.ph("Başlık", font=t.title_font, size=t.size + 6, bold=True, align=C, first=0, after=10, line=115,
+             style="Konu Başlığı")
+    if subtitle:
+        b.ph(subtitle, size=t.size, align=C, first=0, after=8, line=115)
+    b.p(turkish_upper(kind_label), bold=True, size=big, align=C, first=0, after=0, line=115)
+    b.spacer(120)
+    b.info_lines(info_pairs)
+    b.spacer(110)
+    b.runs([("[ŞEHİR]", dict(bold=True, placeholder=True)), (f" – {_year()}", dict(bold=True))],
+           align=C, after=0, first=0)
+    b.page_break()
+
+
+def _cover_business(b, a, kind_label, subtitle_ph, info_pairs):
+    """Kurumsal rapor kapağı: logo, küçük etiket, büyük başlık, ince vurgu çizgisi, bilgi tablosu."""
+    t = b.t
+    L = Qt.AlignmentFlag.AlignLeft
+    b.image(logo_placeholder(t, 72), 72, 72, align=L, after=0, slot="logo")
+    b.spacer(150)
+    b.label(f"{kind_label}  ·  {_year()}", align=L, first=0)
+    if a("title"):
+        b.p(a("title"), font=t.title_font, size=t.size * 2.5, color=t.dark, style="Konu Başlığı", after=8,
+            line=105, first=0, align=L)
+    else:
+        b.ph("Raporun Başlığı", font=t.title_font, size=t.size * 2.5, style="Konu Başlığı", after=8, first=0,
+             align=L)
+    b.ph(subtitle_ph, size=t.size * 1.2, after=14, first=0, align=L)
+    b.image(thin_band(t, b.tw * 0.25, 3), b.tw * 0.25, 3, align=L, after=0)
+    b.spacer(170)
+    b.info_grid(info_pairs, label_w=28)
+    b.page_break()
 
 
 def _numbered_sections(b, kind, opts, hook=None):
@@ -822,33 +945,28 @@ def _numbered_sections(b, kind, opts, hook=None):
 
 
 def _arastirma(b, a, opts):
-    t = b.t
     title = a("title") or "Araştırma Raporu"
-    b.setup((25, 25, 25, 25), header=title[:70], header_align="left", footer="Sayfa {SAYFA} / {TOPLAM}",
-            footer_align="right", different_first=True)
+    b.setup((25, 25, 25, 25), header=title[:70], header_align="right", footer="{SAYFA}", different_first=True)
     if opts.get("cover", True):
-        _cover_modern(b, a, "Araştırma Raporu", "Alt başlık: araştırmanın kapsamı tek cümleyle",
-                      [("Hazırlayan", a("author")), ("Kurum", a("institution")), ("Tarih", a("date") or _today()),
-                       ("Rapor No", ""), ("Anahtar kelimeler", a("keywords"))], art="waves")
-        b.page_break()
+        _cover_formal(b, a, "Araştırma Raporu", [("Hazırlayan", a("author")), ("Rapor No", ""),
+                                                 ("Tarih", a("date") or _today())],
+                      tc=False, subtitle="Alt başlık: araştırmanın kapsamı tek cümleyle")
     if opts.get("toc", True):
         b.toc_here()
         b.page_break()
 
     def hook(h):
         if h == "Özet":
-            b.p("Öne çıkan bulgular", bold=True, color=t.accent, size=t.size * 0.95, before=6, first=0,
-                align=Qt.AlignmentFlag.AlignLeft)
-            b.stat_boxes([("%—", "[temel oran / değişim]"), ("n = —", "[örneklem büyüklüğü]"),
-                          ("—", "[öne çıkan gösterge]")])
+            b.runs([("Anahtar Kelimeler: ", dict(bold=True)),
+                    (a("keywords") or "[3–5 kavram, virgülle]", dict(placeholder=not a("keywords")))], first=0,
+                   align=Qt.AlignmentFlag.AlignLeft)
         if h == "Bulgular":
             b.caption("Tablo 1. Alt problemlere ilişkin bulguların özeti")
             b.table([["Alt problem", "Analiz", "Sonuç", "p"], ["1", "[—]", "[—]", "[—]"], ["2", "[—]", "[—]", "[—]"],
                      ["3", "[—]", "[—]", "[—]"]], widths=[18, 30, 38, 14], align_right=(3,))
         if h == "Sonuç ve Öneriler":
-            b.callout("Öneriler", [("[Uygulayıcılara yönelik öneri]", dict(placeholder=True)),
-                                   ("[Politika yapıcılara yönelik öneri]", dict(placeholder=True)),
-                                   ("[Sonraki araştırmalara yönelik öneri]", dict(placeholder=True))])
+            b.items(["Uygulayıcılara yönelik öneri", "Politika yapıcılara yönelik öneri",
+                     "Sonraki araştırmalara yönelik öneri"], numbered=True, placeholder=True)
     _numbered_sections(b, "arastirma", opts, hook)
 
 
@@ -858,34 +976,23 @@ def _odev(b, a, opts, kind="odev"):
     b.setup((25, 25, 25, 25), header=(a("course") or "")[:60], header_align="right", footer="{SAYFA}",
             different_first=True)
     if opts.get("cover", True):
-        b.image(logo_placeholder(t, 72), 72, 72, after=10, slot="logo")
-        b.p(turkish_upper(a("institution")) if a("institution") else "[ÜNİVERSİTE / OKUL ADI]", bold=True,
-            color=t.dark, size=t.size * 1.15, align=C, first=0, after=2, placeholder=not a("institution"))
-        b.ph("Fakülte / Bölüm", align=C, first=0, after=14, size=t.size * 0.95)
-        b.image(ornament(t, 180, 16), 180, 16, after=60)
-        b.p(a("course") or "[Ders Adı]", color=t.accent, size=t.size * 1.1, caps="small", spacing=1.0, align=C,
-            first=0, after=8, placeholder=not a("course"))
-        if a("title"):
-            b.p(a("title"), font=t.title_font, size=t.size * 2.3, color=t.dark, align=C, first=0, after=8,
-                style="Konu Başlığı", line=105)
-        else:
-            b.ph("Ödevin Başlığı", font=t.title_font, size=t.size * 2.3, align=C, first=0, after=8,
-                 style="Konu Başlığı")
-        b.p(KINDS[kind]["name"].split(" (")[0], color=t.muted, align=C, first=0, after=80)
-        b.info_grid([("Hazırlayan", a("author")), ("Öğrenci No", a("student_no")), ("Ders", a("course")),
-                      ("Öğretim Üyesi", a("instructor")), ("Teslim Tarihi", a("date") or _today())], label_w=35)
-        b.spacer(30)
-        b.ph(f"{_year()}–{int(_year()) + 1} Eğitim-Öğretim Yılı · Güz Dönemi", align=C, first=0)
-        b.page_break()
-    for i, (heading, level, hint) in enumerate(_sections(kind), 1):
-        b.heading(heading, min(level, 2))
-        if kind == "lab" and heading == "Deneyin Amacı":
-            b.band([(hint, dict(placeholder=True))], bg=t.tint, padding=12)
+        _cover_formal(b, a, "Dönem Ödevi" if kind == "odev" else "Deney Raporu",
+                      [("Hazırlayan", a("author")), ("Öğrenci No", a("student_no")),
+                       ("Öğretim Üyesi", a("instructor")), ("Teslim Tarihi", a("date") or _today())],
+                      tc=True, above_title=a("course"))
+    n = 0
+    for heading, level, hint in _sections(kind):
+        if heading == "Kaynakça":
+            b.heading(heading, 1)
+            _section_body(b, kind, heading, hint, opts)
+            _references(b, opts)
             continue
+        n += 1
+        b.heading(heading, 1, number=f"{n}.")
         if heading == "Teorik Bilgi":
             _section_body(b, kind, heading, hint, opts)
-            b.p("F = m · a", italic=True, size=t.size * 1.2, align=C, first=0, after=2)
-            b.p("(1)", color=t.muted, align=Qt.AlignmentFlag.AlignRight, first=0, after=8)
+            b.p("F = m · a", italic=True, align=C, first=0, after=0)
+            b.p("(1)", align=Qt.AlignmentFlag.AlignRight, first=0, after=8)
             continue
         if heading == "Kullanılan Araç ve Gereçler":
             b.items(["Malzeme 1 (adet / özellik)", "Malzeme 2", "Ölçüm cihazı (duyarlılık)"], placeholder=True)
@@ -895,6 +1002,7 @@ def _odev(b, a, opts, kind="odev"):
                     numbered=True, placeholder=True)
             continue
         if heading == "Veriler ve Hesaplamalar":
+            _section_body(b, kind, heading, hint, opts)
             b.caption("Tablo 1. Ölçüm sonuçları")
             b.table([["Deneme", "Ölçülen (birim)", "Hesaplanan (birim)", "Bağıl hata (%)"],
                      ["1", "[—]", "[—]", "[—]"], ["2", "[—]", "[—]", "[—]"], ["3", "[—]", "[—]", "[—]"],
@@ -902,25 +1010,24 @@ def _odev(b, a, opts, kind="odev"):
             b.p("Bağıl hata = |deneysel − teorik| / teorik × 100", italic=True, align=C, first=0)
             continue
         _section_body(b, kind, heading, hint, opts)
-        if heading == "Kaynakça":
-            _references(b, opts)
 
 
 def _proje(b, a, opts):
     t = b.t
-    b.setup((25, 25, 25, 25), header=(a("title") or "Proje Önerisi")[:70], header_align="left",
-            footer="Sayfa {SAYFA} / {TOPLAM}", footer_align="right", different_first=True)
+    b.setup((25, 25, 25, 25), header=(a("title") or "Proje Önerisi")[:70], header_align="right",
+            footer="Sayfa {SAYFA} / {TOPLAM}", footer_align="center", different_first=True)
     if opts.get("cover", True):
-        _cover_modern(b, a, "Proje Önerisi", "Projenin tek cümlelik özeti",
-                      [("Proje Yürütücüsü", a("author")), ("Araştırmacılar", ""), ("Kurum", a("institution")),
-                       ("Destek Programı", ""), ("Süre", "12 ay"), ("Toplam Bütçe", "— TL")], art="circles")
-        b.page_break()
+        _cover_formal(b, a, "Proje Önerisi",
+                      [("Proje Yürütücüsü", a("author")), ("Araştırmacılar", ""), ("Destek Programı", ""),
+                       ("Süre", "12 ay"), ("Toplam Bütçe", ""), ("Tarih", a("date") or _today())],
+                      tc=False, subtitle="Projenin tek cümlelik özeti")
     if opts.get("toc", True):
         b.toc_here()
         b.page_break()
 
     def hook(h):
         if h == "Amaç ve Hedefler":
+            b.caption("Tablo 1. Proje hedefleri ve başarı ölçütleri")
             b.table([["Kod", "Hedef", "Başarı ölçütü"], ["H1", "[Ölçülebilir hedef]", "[Gösterge ve hedef değer]"],
                      ["H2", "[—]", "[—]"], ["H3", "[—]", "[—]"]], widths=[10, 50, 40])
         if h == "İş-Zaman Çizelgesi":
@@ -930,68 +1037,52 @@ def _proje(b, a, opts):
                     "İP3 Analiz": range(7, 11), "İP4 Raporlama ve yaygınlaştırma": range(10, 13)}
             for name in plan:
                 rows.append([name] + [""] * 12)
-            b.table(rows, widths=[28] + [6] * 12, zebra=False, size=t.size * 0.8)
+            b.caption("Tablo 2. İş-zaman çizelgesi (aylar)")
+            b.table(rows, widths=[28] + [6] * 12, size=t.size * 0.8, style="grid")
             tbl = _last_table(b)
             if tbl is not None:
+                fill = QColor("#8C8C8C") if QColor(t.accent).lightness() < 40 else QColor(t.accent)
                 for r, (name, rng) in enumerate(plan.items(), 1):
                     for m in rng:
                         cell = tbl.cellAt(r, m)
                         f = cell.format().toTableCellFormat()
-                        f.setBackground(QColor(t.accent))
+                        f.setBackground(fill)
                         cell.setFormat(f)
         if h == "Bütçe ve Gerekçesi":
+            b.caption("Tablo 3. Bütçe ve gerekçesi")
             b.table([["Bütçe kalemi", "Gerekçe", "Tutar (TL)"], ["Makine-teçhizat", "[—]", "[—]"],
                      ["Sarf malzemesi", "[—]", "[—]"], ["Hizmet alımı", "[—]", "[—]"],
-                     ["Seyahat", "[—]", "[—]"], ["TOPLAM", "", "[—]"]],
+                     ["Seyahat", "[—]", "[—]"], ["Toplam", "", "[—]"]],
                     widths=[30, 50, 20], align_right=(2,), bold_last=True)
         if h == "Risk Yönetimi":
+            b.caption("Tablo 4. Riskler ve B planları")
             b.table([["Risk", "Olasılık", "Etki", "B planı"], ["[Veri toplamada gecikme]", "Orta", "Yüksek", "[—]"],
                      ["[Ekipman arızası]", "Düşük", "Orta", "[—]"]], widths=[34, 14, 14, 38])
         if h == "Yaygın Etki":
+            b.caption("Tablo 5. Beklenen çıktılar")
             b.table([["Çıktı türü", "Açıklama"], ["Bilimsel", "[Makale, bildiri]"], ["Ekonomik", "[Patent, ürün]"],
                      ["Toplumsal", "[Eğitim, farkındalık]"]], widths=[25, 75])
     _numbered_sections(b, "proje", opts, hook)
 
 
 def _ara_rapor(b, a, opts):
-    t = b.t
-    C = Qt.AlignmentFlag.AlignHCenter
     b.setup((25, 25, 25, 25), header=((a("title") or "Proje")[:55] + " · Ara Rapor"), header_align="right",
-            footer="Sayfa {SAYFA} / {TOPLAM}", footer_align="center", different_first=True)
+            footer="{SAYFA}", footer_align="center", different_first=True)
     if opts.get("cover", True):
-        b.p("T.C.", bold=True, color=t.dark, align=C, first=0, after=2)
-        b.p(turkish_upper(a("institution")) if a("institution") else "[ÜNİVERSİTE ADI]", bold=True, color=t.dark,
-            size=t.size * 1.15, align=C, first=0, after=2, placeholder=not a("institution"))
-        b.ph("… Fakültesi / … Enstitüsü", align=C, first=0, after=2, size=t.size * 0.95)
-        b.p(turkish_upper(a("department")) + " BÖLÜMÜ" if a("department") else "[… BÖLÜMÜ / ANABİLİM DALI]",
-            align=C, first=0, after=14, size=t.size * 0.95, placeholder=not a("department"))
-        b.image(logo_placeholder(t, 80), 80, 80, after=14, slot="logo")
-        b.image(ornament(t, 180, 16), 180, 16, after=70)
-        if a("title"):
-            b.p(a("title"), font=t.title_font, size=t.size * 2.1, color=t.dark, align=C, first=0, after=10,
-                style="Konu Başlığı", line=110, bold=True)
-        else:
-            b.ph("Proje / Tez Başlığı", font=t.title_font, size=t.size * 2.1, align=C, first=0, after=10,
-                 style="Konu Başlığı")
-        b.band([("1. ARA RAPOR", dict(bold=True, size=t.size * 1.15, color="#FFFFFF", spacing=2.0, after=0,
-                                      align=C))], bg=t.accent, padding=8)
-        b.ph("Bitirme Projesi / BAP Projesi / Yüksek Lisans Tezi", align=C, first=0, after=70, size=t.size * 0.95)
-        b.info_grid([("Hazırlayan", a("author")), ("Öğrenci No", a("student_no")), ("Danışman", a("advisor")),
-                     ("Proje No", ""), ("Rapor Dönemi", ""), ("Teslim Tarihi", a("date") or _today())], label_w=32)
-        b.spacer(110)
-        b.runs([("[ŞEHİR]", dict(bold=True, placeholder=True)), (f" – {_year()}", dict(bold=True))],
-               align=C, after=0, first=0)
-        b.page_break()
+        _cover_formal(b, a, "1. Ara Rapor",
+                      [("Hazırlayan", a("author")), ("Öğrenci No", a("student_no")), ("Danışman", a("advisor")),
+                       ("Proje No", ""), ("Rapor Dönemi", ""), ("Teslim Tarihi", a("date") or _today())],
+                      tc=True, subtitle="Bitirme Projesi / BAP Projesi / Yüksek Lisans Tezi")
     if opts.get("toc", True):
         b.toc_here()
         b.page_break()
+    L = Qt.AlignmentFlag.AlignLeft
 
     def hook(h):
         if h == "Özet":
             b.runs([("Anahtar Kelimeler: ", dict(bold=True)),
-                    (a("keywords") or "[3–5 kavram, virgülle]", dict(placeholder=not a("keywords")))], first=0)
-            b.stat_boxes([("%—", "[genel ilerleme]"), ("—/—", "[tamamlanan iş paketi]"),
-                          ("—", "[dönemin öne çıkan çıktısı]")])
+                    (a("keywords") or "[3–5 kavram, virgülle]", dict(placeholder=not a("keywords")))], first=0,
+                   align=L)
         if h == "İş-Zaman Çizelgesine Göre İlerleme":
             b.caption("Tablo 1. İş paketlerinin planlanan ve gerçekleşen durumu")
             b.table([["İP", "İş paketi", "Planlanan süre", "Gerçekleşme (%)", "Durum"],
@@ -1005,17 +1096,19 @@ def _ara_rapor(b, a, opts):
             b.table([["Ölçüt / değişken", "Beklenen", "Elde edilen", "Açıklama"], ["[—]", "[—]", "[—]", "[—]"],
                      ["[—]", "[—]", "[—]", "[—]"]], widths=[30, 18, 18, 34])
         if h == "Karşılaşılan Sorunlar ve Çözüm Önerileri":
+            b.caption("Tablo 3. Karşılaşılan sorunlar ve alınan önlemler")
             b.table([["Sorun", "Etkisi", "Çözüm / alınan önlem"],
                      ["[Malzeme tedarikinde gecikme]", "[İP2 ~1 ay gecikti]", "[Alternatif tedarikçi]"],
                      ["[—]", "[—]", "[—]"]], widths=[34, 26, 40])
         if h == "Bütçe Kullanımı":
-            b.caption("Tablo 3. Bütçe kullanım durumu")
+            b.caption("Tablo 4. Bütçe kullanım durumu")
             b.table([["Bütçe kalemi", "Onaylanan (TL)", "Harcanan (TL)", "Kalan (TL)"],
                      ["Makine-teçhizat", "[—]", "[—]", "[—]"], ["Sarf malzemesi", "[—]", "[—]", "[—]"],
                      ["Hizmet alımı", "[—]", "[—]", "[—]"], ["Seyahat", "[—]", "[—]", "[—]"],
-                     ["TOPLAM", "[—]", "[—]", "[—]"]],
+                     ["Toplam", "[—]", "[—]", "[—]"]],
                     widths=[34, 22, 22, 22], align_right=(1, 2, 3), bold_last=True)
         if h == "Sonraki Dönem Çalışma Planı":
+            b.caption("Tablo 5. Sonraki dönem çalışma planı")
             b.table([["Yapılacak iş", "Başlangıç", "Bitiş", "Beklenen çıktı"],
                      ["[—]", "[gg.aa]", "[gg.aa]", "[—]"], ["[—]", "[gg.aa]", "[gg.aa]", "[—]"]],
                     widths=[38, 15, 15, 32])
@@ -1024,13 +1117,11 @@ def _ara_rapor(b, a, opts):
             b.fresh = False
             b.page_break()
         if h == "Danışman Görüşü ve Onay":
-            b.callout("Danışman görüşü", [("[Çalışmanın ilerleyişine ilişkin değerlendirme]",
-                                          dict(placeholder=True, after=6)),
-                                         ("☐ Çalışmalar plana uygun yürütülmektedir.", dict(after=2)),
-                                         ("☐ Çalışmalar gecikmeli yürütülmektedir; telafi planı uygundur.",
-                                          dict(after=2)),
-                                         ("☐ İlerleme yetersizdir.", dict(after=0))])
-            b.spacer(8)
+            for line in ("☐ Çalışmalar plana uygun yürütülmektedir.",
+                         "☐ Çalışmalar gecikmeli yürütülmektedir; telafi planı uygundur.",
+                         "☐ İlerleme yetersizdir."):
+                b.p(line, first=0, after=2, align=L)
+            b.ph("Danışmanın değerlendirmesi", before=6, after=10)
             b.signature_table([["Hazırlayan", a("author") or "[Ad SOYAD]", ""],
                                ["Danışman", a("advisor") or "[Unvan Ad SOYAD]", ""]],
                               cols=("Görevi", "Unvanı, Adı Soyadı", "İmza / Tarih"))
@@ -1044,56 +1135,46 @@ def _last_table(b):
 
 
 def _deneme(b, a, opts):
+    """MLA 9 düzeni: sol üstte ad / öğretim üyesi / ders / tarih, ortalı başlık, çift satır aralığı,
+    ara başlıksız paragraflar (giriş – gelişme – sonuç)."""
     t = b.t
-    C = Qt.AlignmentFlag.AlignHCenter
-    b.setup((30, 30, 30, 30), footer="{SAYFA}", different_first=True)
-    b.spacer(40)
+    L, C = Qt.AlignmentFlag.AlignLeft, Qt.AlignmentFlag.AlignHCenter
+    b.setup((25, 25, 25, 25), footer="{SAYFA}", footer_align="right")
+    for val, ph in ((a("author"), "Ad Soyad"), (a("instructor"), "Öğretim üyesi"), (a("course"), "Ders adı"),
+                    (a("date") or _today(), "")):
+        b.p(val or f"[{ph}]", placeholder=not val, align=L, first=0, after=0)
     if a("title"):
-        b.p(a("title"), font=t.title_font, size=t.size * 2.4, italic=True, color=t.dark, align=C, first=0, after=10,
-            style="Konu Başlığı")
+        b.p(a("title"), align=C, first=0, after=0, style="Konu Başlığı")
     else:
-        b.ph("Denemenin Başlığı", font=t.title_font, size=t.size * 2.4, align=C, first=0, after=10,
-             style="Konu Başlığı")
-    b.p(a("author") or "[Yazar]", caps="small", spacing=1.5, color=t.accent, align=C, first=0, after=4,
-        placeholder=not a("author"))
-    b.p(" · ".join(x for x in (a("course"), a("date") or _today()) if x), color=t.muted, size=t.size * 0.9,
-        align=C, first=0, after=14)
-    b.image(ornament(t, 200, 18), 200, 18, after=24)
-    for i, (heading, level, hint) in enumerate(_sections("deneme")):
-        if i == 0:
-            b.heading(heading, 2, rule=False)
-            # Kitap geleneği: açılış sözcükleri küçük büyük harf ve vurgu renginde
-            b.runs([("Yazının ilk cümlesi", dict(caps="small", spacing=0.8, color=t.accent, bold=True)),
-                    (" okuru içeri çekmeli. ", dict()),
-                    ("[" + hint + "]", dict(placeholder=True))], first=0, after=8)
-            continue
-        b.heading(heading, 2, rule=False)
-        _section_body(b, "deneme", heading, hint, opts)
-    b.image(ornament(t, 120, 14), 120, 14, after=0)
+        b.ph("Denemenin Başlığı", align=C, first=0, after=0, style="Konu Başlığı")
+    for text in ("Giriş: dikkat çekici bir açılış yapın; paragrafın sonunda tez cümlenizi (ana iddianızı) yazın.",
+                 "Birinci gelişme paragrafı: konu cümlesi, kanıt ya da örnek ve bunun teze nasıl bağlandığı.",
+                 "İkinci gelişme paragrafı: farklı bir açıdan ikinci gerekçe ve kanıtı.",
+                 "Karşı görüş: olası bir itirazı adil biçimde sunun ve yanıtlayın.",
+                 "Sonuç: tezi farklı sözcüklerle yeniden vurgulayın ve düşündürücü bir kapanış yapın."):
+        b.ph(text, align=L, after=0)
 
 
 def _rapor(b, a, opts):
-    t = b.t
     b.setup((22, 22, 22, 22), header=(a("title") or "Faaliyet Raporu")[:70], header_align="left",
             footer="Sayfa {SAYFA} / {TOPLAM}", footer_align="right", different_first=True)
-    _cover_modern(b, a, "Faaliyet Raporu", "Dönem: 2026 · 3. Çeyrek",
-                  [("Hazırlayan", a("author")), ("Birim", a("institution")), ("Tarih", a("date") or _today()),
-                   ("Dağıtım", "Yönetim Kurulu"), ("Gizlilik", "Kurum içi")], art="grid")
-    b.page_break()
+    _cover_business(b, a, "Faaliyet Raporu", "Dönem: 2026 · 3. Çeyrek",
+                    [("Hazırlayan", a("author")), ("Birim", a("institution")), ("Tarih", a("date") or _today()),
+                     ("Dağıtım", "Yönetim Kurulu"), ("Gizlilik", "Kurum içi")])
     if opts.get("toc", True):
         b.toc_here()
         b.page_break()
 
     def hook(h):
         if h == "Yönetici Özeti":
-            b.stat_boxes([("₺ —", "[Gelir / bütçe]"), ("%—", "[Büyüme]"), ("—", "[Müşteri / kullanıcı]"),
-                          ("—", "[Memnuniyet]")])
+            b.items(["Öne çıkan sonuç 1 (rakamla)", "Öne çıkan sonuç 2", "Öne çıkan öneri"], placeholder=True)
         if h == "Bulgular":
             b.caption("Tablo 1. Temel performans göstergeleri")
-            b.table([["Gösterge", "Hedef", "Gerçekleşen", "Durum"], ["[—]", "[—]", "[—]", "▲"],
-                     ["[—]", "[—]", "[—]", "▼"], ["[—]", "[—]", "[—]", "●"]], widths=[40, 20, 20, 20],
-                    align_right=(1, 2))
+            b.table([["Gösterge", "Hedef", "Gerçekleşen", "Değişim"], ["[—]", "[—]", "[—]", "[+%—]"],
+                     ["[—]", "[—]", "[—]", "[−%—]"], ["[—]", "[—]", "[—]", "[%—]"]], widths=[40, 20, 20, 20],
+                    align_right=(1, 2, 3))
         if h == "Öneriler":
+            b.caption("Tablo 2. Eylem planı")
             b.table([["Öneri", "Sorumlu", "Termin", "Öncelik"], ["[Somut eylem]", "[—]", "[gg.aa]", "Yüksek"],
                      ["[—]", "[—]", "[—]", "Orta"]], widths=[46, 20, 16, 18])
     _numbered_sections(b, "rapor", opts, hook)
@@ -1125,97 +1206,100 @@ def _dilekce(b, a, opts):
 
 
 def _mektup(b, a, opts):
+    """Blok düzende iş mektubu: antet (logo, ad, iletişim), tarih, alıcı, konu, hitap, gövde, kapanış."""
     t = b.t
-    R = Qt.AlignmentFlag.AlignRight
+    R, L = Qt.AlignmentFlag.AlignRight, Qt.AlignmentFlag.AlignLeft
     b.setup((25, 22, 25, 25), header="", footer="")
-    b.image(logo_placeholder(t, 56), 56, 56, align=Qt.AlignmentFlag.AlignLeft, after=8, slot="logo")
-    b.p(a("author") or "[Ad Soyad]", font=t.title_font, size=t.size * 2.4, color=t.accent, first=0, after=2,
-        placeholder=not a("author"), align=Qt.AlignmentFlag.AlignLeft)
-    b.runs([("[Unvan / meslek]", dict(placeholder=True, caps="small", spacing=1.0))], first=0, after=6,
-           align=Qt.AlignmentFlag.AlignLeft)
-    b.runs([("✉ ", dict(color=t.accent)), ("[e-posta]", dict(placeholder=True, size=t.size * 0.9)),
-            ("     ☎ ", dict(color=t.accent)), ("[telefon]", dict(placeholder=True, size=t.size * 0.9)),
-            ("     ⌂ ", dict(color=t.accent)), ("[adres]", dict(placeholder=True, size=t.size * 0.9))],
-           first=0, after=6, align=Qt.AlignmentFlag.AlignLeft)
-    b.image(thin_band(t, b.tw, 3), b.tw, 3, after=26)
-    b.p(a("date") or _today(), align=R, first=0, after=20)
-    b.p(a("recipient") or "[Alıcı adı / kurum]", bold=True, first=0, after=2, placeholder=not a("recipient"),
-        align=Qt.AlignmentFlag.AlignLeft)
-    b.ph("Alıcı adresi", first=0, after=18, align=Qt.AlignmentFlag.AlignLeft)
+    b.image(logo_placeholder(t, 56), 56, 56, align=L, after=6, slot="logo")
+    b.p(a("author") or "[Ad Soyad / Kurum Adı]", bold=True, size=t.size + 4, color=t.dark, first=0, after=0,
+        placeholder=not a("author"), align=L, line=110)
+    b.ph("Adres · Telefon · E-posta", size=t.size - 1, first=0, after=4, align=L)
+    b.image(thin_band(t, b.tw, 2), b.tw, 2, after=24)
+    b.p(a("date") or _today(), align=R, first=0, after=18)
+    b.p(a("recipient") or "[Alıcı adı / kurum]", bold=True, first=0, after=0, placeholder=not a("recipient"),
+        align=L)
+    b.ph("Alıcı adresi", first=0, after=16, align=L)
     b.runs([("Konu: ", dict(bold=True)), (a("subject") or "[Mektubun konusu]", dict(placeholder=not a("subject")))],
-           first=0, after=14, align=Qt.AlignmentFlag.AlignLeft)
-    b.p("Sayın [Ad Soyad],", first=0, after=10)
-    b.ph("Giriş: yazma amacınızı ilk cümlede açıkça belirtin.", after=8)
-    b.ph("Gelişme: ayrıntılar, gerekçeler ve talepler.", after=8)
-    b.ph("Kapanış: beklediğiniz eylemi ve teşekkürünüzü yazın.", after=22)
-    b.p("Saygılarımla,", first=0, after=36)
-    b.p(a("author") or "[Ad Soyad]", bold=True, first=0, after=0, placeholder=not a("author"))
-    b.ph("Unvan", first=0)
+           first=0, after=14, align=L)
+    b.p("Sayın [Ad Soyad],", first=0, after=10, align=L)
+    b.ph("Giriş: yazma amacınızı ilk cümlede açıkça belirtin.", after=8, align=L, first=0)
+    b.ph("Gelişme: ayrıntılar, gerekçeler ve talepler.", after=8, align=L, first=0)
+    b.ph("Kapanış: beklediğiniz eylemi ve teşekkürünüzü yazın.", after=20, align=L, first=0)
+    b.p("Saygılarımla,", first=0, after=36, align=L)
+    b.p(a("author") or "[Ad Soyad]", bold=True, first=0, after=0, placeholder=not a("author"), align=L)
+    b.ph("Unvan", first=0, align=L)
 
 
 def _toplanti(b, a, opts):
     t = b.t
-    b.setup((22, 22, 22, 22), header="Toplantı Notları", header_align="right", footer="{SAYFA}")
-    b.band([("TOPLANTI NOTLARI", dict(bold=True, color="#FFFFFF", size=t.size * 0.82, spacing=1.8, after=4)),
-            (a("title") or "[Toplantının adı]", dict(font=t.title_font, size=t.size * 2.0, color="#FFFFFF",
-                                                       placeholder=False, after=0))], bg=t.accent, padding=18)
+    L = Qt.AlignmentFlag.AlignLeft
+    b.setup((20, 20, 22, 22), header="", footer="{SAYFA}")
+    b.label("Toplantı Notları", align=L, first=0)
+    if a("title"):
+        b.p(a("title"), font=t.title_font, size=t.size * 2.0, color=t.dark, first=0, after=8, align=L, line=105)
+    else:
+        b.ph("Toplantının adı", font=t.title_font, size=t.size * 2.0, first=0, after=8, align=L)
     b.info_grid([("Tarih", a("date") or _today()), ("Saat", ""), ("Yer / Bağlantı", ""), ("Yöneten", ""),
-                 ("Not alan", "")], label_w=26)
-    b.heading("Katılımcılar", 2)
-    b.items(["Ad Soyad — Birim", "Ad Soyad — Birim"], placeholder=True)
-    b.heading("Gündem", 2)
+                 ("Not alan", "")], label_w=24)
+
+    def head(text):
+        b.heading(text, 2, before=10)
+
+    head("Katılımcılar")
+    b.ph("Ad Soyad (Birim), Ad Soyad (Birim), …", first=0, align=L)
+    head("Gündem")
     b.items(["Açılış ve önceki toplantı kararlarının takibi", "Gündem maddesi", "Gündem maddesi",
              "Dilek ve öneriler"], numbered=True)
-    b.heading("Görüşmeler", 2)
-    b.ph("Her gündem maddesi için kısa özet: kim ne önerdi, hangi seçenekler konuşuldu.")
-    b.heading("Kararlar", 2)
+    head("Görüşmeler")
+    b.ph("Her gündem maddesi için kısa özet: kim ne önerdi, hangi seçenekler konuşuldu.", first=0, align=L)
+    head("Kararlar")
     b.table([["No", "Karar", "Sorumlu"], ["1", "[—]", "[—]"], ["2", "[—]", "[—]"]], widths=[8, 67, 25])
-    b.heading("Yapılacaklar", 2)
-    b.table([["", "Görev", "Sorumlu", "Son tarih"], ["☐", "[—]", "[—]", "[gg.aa]"], ["☐", "[—]", "[—]", "[gg.aa]"],
-             ["☐", "[—]", "[—]", "[gg.aa]"]], widths=[6, 54, 22, 18])
-    b.callout("Bir sonraki toplantı", "Tarih, saat ve ön gündem.")
+    head("Yapılacaklar")
+    b.table([["Görev", "Sorumlu", "Son tarih", "Durum"], ["[—]", "[—]", "[gg.aa]", "Açık"],
+             ["[—]", "[—]", "[gg.aa]", "Açık"]], widths=[52, 22, 14, 12])
+    head("Bir Sonraki Toplantı")
+    b.ph("Tarih, saat ve ön gündem.", first=0, align=L)
 
 
 def _ozgecmis(b, a, opts):
+    """Tek sayfalık özgeçmiş: ad ve iletişim, profil, deneyim, eğitim, beceriler, diller."""
     t = b.t
+    L = Qt.AlignmentFlag.AlignLeft
     b.setup((16, 16, 18, 18), header="", footer="")
-    hdr = b._table(1, 2, [20, 80], border=0, padding=4)
-    img = photo_placeholder(t, 104)
+    hdr = b._table(1, 2, [17, 83], border=0, padding=3)
+    img = photo_placeholder(t, 88)
     res = f"{IMAGE_SLOT_PREFIX}photo-{uuid.uuid4().hex[:10]}.png"
     b.doc.addResource(QTextDocument.ResourceType.ImageResource, QUrl(res), img)
     cur = hdr.cellAt(0, 0).firstCursorPosition()
     fmt = QTextImageFormat()
     fmt.setName(res)
-    fmt.setWidth(104)
-    fmt.setHeight(104)
+    fmt.setWidth(88)
+    fmt.setHeight(88)
     cur.insertImage(fmt)
     b._fill(hdr.cellAt(0, 1), [
-        (a("author") or "Ad Soyad", dict(font=t.title_font, size=t.size * 2.7, color=t.dark, after=0,
+        (a("author") or "Ad Soyad", dict(font=t.title_font, size=t.size * 2.4, color=t.dark, after=0,
                                          placeholder=not a("author"))),
-        ("[Hedef pozisyon / Unvan]", dict(color=t.accent, size=t.size * 1.25, placeholder=True, after=6)),
-        ([("✉ ", dict(color=t.accent)), ("[e-posta]", dict(placeholder=True, size=t.size * 0.9)),
-          ("   ☎ ", dict(color=t.accent)), ("[telefon]", dict(placeholder=True, size=t.size * 0.9)),
-          ("   ⌖ ", dict(color=t.accent)), ("[şehir]", dict(placeholder=True, size=t.size * 0.9)),
-          ("   in ", dict(color=t.accent, bold=True)), ("[linkedin.com/in/…]", dict(placeholder=True, size=t.size * 0.9))],
-         dict(after=0)),
+        ("[Hedef pozisyon / Unvan]", dict(color=t.accent, size=t.size * 1.2, placeholder=True, after=4)),
+        ("[e-posta] · [telefon] · [şehir] · [linkedin.com/in/…]", dict(placeholder=True, size=t.size * 0.95,
+                                                                      after=0)),
     ])
     b._after_table(hdr)
-    b.image(thin_band(t, b.tw, 3), b.tw, 3, after=6)
+    b.image(thin_band(t, b.tw, 2), b.tw, 2, after=2)
 
     def section(title):
-        b.heading(title, 1, before=12, rule=False, caps="small", color=t.accent)
+        b.heading(title, 1, before=10, rule=False, caps="small", color=t.dark)
 
     section("Profil")
     b.ph("Deneyiminizi, uzmanlık alanınızı ve hedefinizi 2–3 cümlede özetleyin. Ölçülebilir bir başarı ekleyin.",
-         first=0)
+         first=0, align=L)
 
     def timeline(rows):
-        tb = b._table(len(rows), 2, [24, 76], border=0, padding=5)
+        tb = b._table(len(rows), 2, [22, 78], border=0, padding=4)
         for r, (when, where, role, bullets) in enumerate(rows):
-            b._fill(tb.cellAt(r, 0), [(when, dict(bold=True, size=t.size * 0.88, color=t.dark, after=0)),
-                                      (where, dict(size=t.size * 0.82, color=t.muted, after=0))])
-            paras = [(role, dict(bold=True, after=0)), (bullets[0], dict(color=t.accent, size=t.size * 0.92, after=3))]
-            paras += [("•  " + x, dict(placeholder=True, size=t.size * 0.92, after=1)) for x in bullets[1:]]
+            b._fill(tb.cellAt(r, 0), [(when, dict(bold=True, size=t.size * 0.92, color=t.dark, after=0)),
+                                      (where, dict(size=t.size * 0.88, color=t.muted, after=0))])
+            paras = [(role, dict(bold=True, after=0)), (bullets[0], dict(italic=True, size=t.size * 0.95, after=2))]
+            paras += [("•  " + x, dict(placeholder=True, size=t.size * 0.95, after=1)) for x in bullets[1:]]
             b._fill(tb.cellAt(r, 1), paras)
         b._after_table(tb)
 
@@ -1227,18 +1311,15 @@ def _ozgecmis(b, a, opts):
     timeline([("[Yıl – Yıl]", "[Şehir]", "[Bölüm, Derece]", ["[Üniversite]", "Not ortalaması / derece",
                                                               "Bitirme projesi"])])
     section("Beceriler")
-    skills = ["[Beceri]", "[Beceri]", "[Beceri]", "[Beceri]", "[Beceri]"]
-    tb = b._table(1, len(skills), [20] * len(skills), border=0, padding=6, spacing=5)
-    for i, s_ in enumerate(skills):
-        b._fill(tb.cellAt(0, i), [(s_.strip("[]"), dict(placeholder=True, size=t.size * 0.9,
-                                                        align=Qt.AlignmentFlag.AlignHCenter))], t.tint)
-    b._after_table(tb)
+    b.ph("Beceri · Beceri · Beceri · Beceri · Beceri", first=0, align=L)
     section("Diller")
-    b.table([["Dil", "Seviye"], ["Türkçe", "Ana dil"], ["İngilizce", "[C1 · okuma, yazma, konuşma]"]], widths=[30, 70])
+    b.runs([("Türkçe: ", dict(bold=True)), ("Ana dil", dict())], first=0, after=1, align=L)
+    b.runs([("İngilizce: ", dict(bold=True)), ("[C1 · okuma, yazma, konuşma]", dict(placeholder=True))],
+           first=0, align=L)
     section("Sertifikalar ve Ödüller")
     b.items(["Sertifika adı — Kurum, Yıl", "Ödül adı — Kurum, Yıl"], placeholder=True)
     section("Referanslar")
-    b.p("İstendiğinde sunulacaktır.", italic=True, color=t.muted, first=0)
+    b.p("İstendiğinde sunulacaktır.", italic=True, color=t.muted, first=0, align=L)
 
 
 def _bos(b, a, opts):
@@ -1267,6 +1348,7 @@ def build_kind(editor, kind, answers, opts):
     def a(k):
         return (answers.get(k) or "").strip()
 
+    editor.toc_title_style = (theme.h, theme.size + 2 if theme.academic else 16)
     BUILDERS.get(kind, _bos)(b, a, opts)
     if b.toc_cursor is not None:
         c = QTextCursor(editor.document())  # normal (sabitlenmemiş) imleç
@@ -1279,6 +1361,7 @@ def build_kind(editor, kind, answers, opts):
     c = editor.textCursor()
     c.movePosition(QTextCursor.MoveOperation.Start)
     editor.setTextCursor(c)
+    editor.apply_keep_with_next()
     editor.document().clearUndoRedoStacks()
     editor.document().setModified(False)
 

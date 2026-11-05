@@ -183,16 +183,15 @@ KINDS = {
     },
     "deneme": {
         "name": "Deneme / Kompozisyon (Essay)", "category": "Eğitim", "icon": "",
-        "desc": "Tez cümlesi, destekleyici paragraflar ve sonuçtan oluşan klasik deneme yapısı.",
-        "fields": ["title", "author", "course", "date"], "citation": False,
-        "sections": [
-            ("Giriş", 1, "Dikkat çekici bir açılış ve paragrafın sonunda tez cümleniz (ana iddianız)."),
-            ("Birinci Destekleyici Görüş", 2, "Konu cümlesi + kanıt/örnek + tezle bağlantı."),
-            ("İkinci Destekleyici Görüş", 2, "Farklı bir açıdan ikinci gerekçe."),
-            ("Karşı Görüş ve Yanıtı", 2, "Olası itirazı adil biçimde sunup yanıtlayın."),
-            ("Sonuç", 1, "Tezi farklı sözcüklerle yeniden vurgulayın ve düşündürücü bir kapanış yapın."),
-        ],
-        "tips": ["Her paragraf tek bir fikri savunsun.", "Geçiş ifadeleri kullanın: 'Bunun yanı sıra', 'Öte yandan'."],
+        "desc": "MLA düzeninde deneme: ara başlık yok; giriş (tez cümlesi), gelişme paragrafları ve sonuç. "
+                "Times New Roman 12 pt, çift satır aralığı.",
+        "fields": ["title", "author", "instructor", "course", "date"], "citation": False,
+        # Denemede ara başlık kullanılmaz; yapı paragraflardadır
+        "sections": [],
+        "tips": ["Yapı: giriş paragrafı (sonunda tez cümlesi) → 2–3 gelişme paragrafı → karşı görüş → sonuç.",
+                 "Her paragraf tek bir fikri savunsun; ilk cümlesi o fikri söylesin.",
+                 "Geçiş ifadeleri kullanın: 'Bunun yanı sıra', 'Öte yandan', 'Sonuç olarak'.",
+                 "Denemede ara başlık kullanılmaz."],
     },
     "rapor": {
         "name": "İş / Faaliyet Raporu", "category": "İş ve Resmî", "icon": "",

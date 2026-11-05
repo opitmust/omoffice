@@ -35,7 +35,7 @@ from docx.text.run import Run
 
 from .common import (
     TC_TYPE, TC_AUTHOR, TC_DATE, STYLE_PROP, STYLES, DOCX_TO_STYLE, PageSetup,
-    COMMENT_PROP, FOOTNOTE_PROP, IMAGE_SLOT_PREFIX, image_slot,
+    COMMENT_PROP, FOOTNOTE_PROP, IMAGE_SLOT_PREFIX, image_slot, KEEP_NEXT_PROP, KEEP_AUTO_PROP, KEEP_GAP_PROP,
     px2pt, pt2px, DEFAULT_FONT, DEFAULT_SIZE,
 )
 from .editor import new_document
@@ -122,6 +122,57 @@ RPR_AFTER_SHD = ("w:fitText", "w:vertAlign", "w:rtl", "w:cs", "w:em", "w:lang",
 
 def twips2px(v):
     return pt2px(float(v) / 20.0)
+
+
+_SIDES = ("top", "bottom", "left", "right")
+
+
+def _cell_border_get(f, side):
+    return {"top": (f.topBorder, f.topBorderBrush), "bottom": (f.bottomBorder, f.bottomBorderBrush),
+            "left": (f.leftBorder, f.leftBorderBrush), "right": (f.rightBorder, f.rightBorderBrush)}[side]
+
+
+def _cell_borders_xml(f):
+    """Qt hücre kenarlıkları (APA tarzı yatay çizgiler) → <w:tcBorders>; yoksa boş metin."""
+    parts = []
+    for side in _SIDES:
+        width, brush = _cell_border_get(f, side)
+        if f.hasProperty({"top": QTextFormat.Property.TableCellTopBorder,
+                          "bottom": QTextFormat.Property.TableCellBottomBorder,
+                          "left": QTextFormat.Property.TableCellLeftBorder,
+                          "right": QTextFormat.Property.TableCellRightBorder}[side]):
+            w = width()
+            if w > 0:
+                b = brush()
+                col = _hex(b.color()) if b.style() != Qt.BrushStyle.NoBrush else "000000"
+                parts.append(f'<w:{side} w:val="single" w:sz="{max(2, int(round(px2pt(w) * 8)))}" w:space="0" '
+                             f'w:color="{col}"/>')
+            else:
+                parts.append(f'<w:{side} w:val="nil"/>')
+    if not parts:
+        return ""
+    return f'<w:tcBorders {nsdecls("w")}>{"".join(parts)}</w:tcBorders>'
+
+
+def _read_cell_borders(tcb, f):
+    """<w:tcBorders> → Qt hücre biçimi. Değişiklik olduysa True."""
+    changed = False
+    for side in _SIDES:
+        el = tcb.find(qn(f"w:{side}"))
+        if el is None:
+            continue
+        val = el.get(qn("w:val"))
+        width = 0.0
+        if val not in ("nil", "none"):
+            width = max(0.5, pt2px(int(el.get(qn("w:sz")) or 4) / 8))
+        col = el.get(qn("w:color")) or "000000"
+        brush = QBrush(QColor("#" + col if len(col) == 6 else "#000000"))
+        style = QTextFrameFormat.BorderStyle.BorderStyle_Solid
+        getattr(f, f"set{side.title()}Border")(width)
+        getattr(f, f"set{side.title()}BorderStyle")(style)
+        getattr(f, f"set{side.title()}BorderBrush")(brush)
+        changed = True
+    return changed
 
 
 def _hex(color):
@@ -211,10 +262,17 @@ def _page_top_gap(block):
     return gap
 
 
+def _auto_break(block):
+    """Sayfa sonunu 'sonrakiyle birlikte tut' koymuş: Word'e sayfa sonu değil keepNext yazılır."""
+    return block.blockFormat().hasProperty(KEEP_AUTO_PROP)
+
+
 def _split_break(block):
     """Word sayfa sonundan sonraki ilk paragrafın 'önce' boşluğunu yok sayar, OmOffice göstermeye devam eder.
     Böyle paragraflarda sayfa sonu, önüne konan görünmez bir paragrafa taşınır."""
     bf = block.blockFormat()
+    if _auto_break(block):
+        return False
     return bool(bf.pageBreakPolicy() & QTextFormat.PageBreakFlag.PageBreak_AlwaysBefore) and _page_top_gap(block) > 0
 
 
@@ -420,6 +478,11 @@ class _Exporter:
                 if rs > 1 or cs > 1:
                     dc = dc.merge(dt.cell(r + rs - 1, c + cs - 1))
                 bg = cell.format().background()
+                cell_borders = _cell_borders_xml(cell.format().toTableCellFormat())
+                if cell_borders:
+                    dc._tc.get_or_add_tcPr().insert_element_before(
+                        parse_xml(cell_borders), "w:shd", "w:noWrap", "w:tcMar", "w:textDirection", "w:tcFitText",
+                        "w:vAlign", "w:hideMark")
                 if bg.style() != Qt.BrushStyle.NoBrush:
                     tcPr = dc._tc.get_or_add_tcPr()
                     tcPr.append(parse_xml(f'<w:shd {nsdecls("w")} w:val="clear" w:color="auto" '
@@ -499,12 +562,14 @@ class _Exporter:
         if bf.textIndent():
             pf.first_line_indent = Pt(px2pt(bf.textIndent()))
         # Qt tablodan hemen sonraki paragrafın 'önce' boşluğunu yok sayar, yerine tablonun alt boşluğunu koyar
-        before = px2pt(bf.topMargin()) if self.gap_before is None else self.gap_before
+        top = float(bf.property(KEEP_AUTO_PROP) or 0) if _auto_break(block) else bf.topMargin()
+        before = px2pt(top) if self.gap_before is None else self.gap_before
         if _split_break(block):
             before = max(before, px2pt(_page_top_gap(block)))
         pf.space_before = Pt(round(before, 1))
         self.gap_before = None
-        pf.space_after = Pt(round(px2pt(bf.bottomMargin()), 1))
+        after = float(bf.property(KEEP_GAP_PROP)) if bf.hasProperty(KEEP_GAP_PROP) else bf.bottomMargin()
+        pf.space_after = Pt(round(px2pt(after), 1))
         lht = bf.lineHeightType()
         # Qt yalnızca resim içeren satırın yüksekliğini resimden alır, yazı tipini katmaz
         self.image_only = bool(block.text()) and not block.text().replace("￼", "")
@@ -525,11 +590,12 @@ class _Exporter:
         else:
             pf.line_spacing = round(_line_ratio(block, self.qdoc.defaultFont()), 4)
         policy = bf.pageBreakPolicy()
-        if policy & QTextFormat.PageBreakFlag.PageBreak_AlwaysBefore and not _split_break(block):
+        if policy & QTextFormat.PageBreakFlag.PageBreak_AlwaysBefore and not _split_break(block) \
+                and not _auto_break(block):
             pf.page_break_before = True
-        # OmOffice'te 'sonrakiyle birlikte tut' ve dul/öksüz satır denetimi yok; Word'ün başlık stillerindeki
-        # bu ayarlar sayfa sonlarını kaydırmasın
-        pf.keep_with_next = False
+        # 'Sonrakiyle birlikte tut' yalnızca başlıklarda ve tablo başlıklarında (OmOffice de aynısını uygular);
+        # dul/öksüz satır denetimi OmOffice'te yok, Word'de de kapalı
+        pf.keep_with_next = bool(bf.headingLevel() > 0 or bf.hasProperty(KEEP_NEXT_PROP)) and bool(block.text().strip())
         pf.widow_control = False
         for tab in bf.tabPositions():
             align = {QTextOption.TabType.RightTab: WD_TAB_ALIGNMENT.RIGHT,
@@ -1162,6 +1228,8 @@ class _Importer:
                 bf.setLineHeight(twips2px(line), LH.MinimumHeight.value)
         if _on(self._find(chain, "w:pageBreakBefore")):
             bf.setPageBreakPolicy(QTextFormat.PageBreakFlag.PageBreak_AlwaysBefore)
+        if _on(self._find([chain[0]], "w:keepNext")):
+            bf.setProperty(KEEP_NEXT_PROP, True)
         pbdr = self._find([chain[0]], "w:pBdr")
         bottom = pbdr.find(qn("w:bottom")) if pbdr is not None else None
         if bottom is not None and bottom.get(qn("w:val")) not in ("nil", "none"):
@@ -1480,6 +1548,11 @@ class _Importer:
                 cell.setFormat(f)
             cc = cell.firstCursorPosition()
             self.write_items(cc, self.iter_items(tc, _Cell(tc, table)), True)
+            tcb = tc.find(qn("w:tcPr") + "/" + qn("w:tcBorders"))
+            if tcb is not None:
+                f = cell.format().toTableCellFormat()
+                if _read_cell_borders(tcb, f):
+                    cell.setFormat(f)
         cursor.setPosition(t.lastPosition() + 1)
         self.last_table = t
 
