@@ -404,12 +404,13 @@ class PageEdit(QTextEdit):
         which = self._hf_hover[1]
         zone = self.hf_zone(which, page_rect)
         text, _ = self.setup.hf_for(which, index + 1)
-        accent = QColor("#2F5DA8")
+        from .theme import CURRENT, ensure_contrast
+        accent = QColor(ensure_contrast(CURRENT["accent"], "#FFFFFF", 4.5))  # sayfa her temada beyaz
         p.save()
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         pen = QPen(accent, 1, Qt.PenStyle.DashLine)
         p.setPen(pen)
-        p.setBrush(QColor(47, 93, 168, 14))
+        p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 14))
         p.drawRoundedRect(zone, 5, 5)
         label = ("Üst bilgi" if which == "header" else "Alt bilgi") + f" — sayfa {index + 1}"
         if self.setup.hf_pages.get(index + 1, {}).get(which) is not None:

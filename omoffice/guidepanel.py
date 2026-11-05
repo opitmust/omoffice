@@ -171,7 +171,7 @@ class CitationDialog(QDialog):
         r = self.ref()
         html = format_reference(self.style.currentText(), r)
         html = re.sub(r"\*([^*]+)\*", r"<i>\1</i>", html)
-        self.prev.setText(f"{html}<br><br><span style='color:gray'>Metin içi atıf: "
+        self.prev.setText(f"{html}<br><br><span>Metin içi atıf: "
                           f"{in_text(self.style.currentText(), r, 1)}</span>")
 
 
@@ -260,7 +260,7 @@ class GuidePanel(QWidget):
         lb.setWordWrap(True)
         lb.setTextFormat(Qt.TextFormat.RichText)
         if muted:
-            lb.setStyleSheet("color: gray;")
+            lb.setProperty("hint", True)
         return lb
 
     def _insert_row(self, text):

@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from .common import PageSetup
+from .theme import CURRENT
 from .guide import KINDS, CATEGORIES, FIELD_LABELS, CITATION_STYLES
 from .templates import _today, build_kind, PALETTES, FONT_SETS, KIND_DESIGN
 
@@ -113,7 +114,7 @@ class StartWizard(QDialog):
         greet = "Günaydın" if 5 <= hour < 12 else "İyi günler" if hour < 18 else "İyi akşamlar"
         head = QLabel(f"<span style='font-size:20pt;font-weight:600'>{'Şablon Kataloğu' if catalog else greet}</span>"
                       "<br><span style='font-size:11pt'>Ne yazmak istiyorsunuz?</span> "
-                      "<span style='color:gray'>Bir şablon seçin; birkaç soru sorup belgeyi kapağı, bölümleri, "
+                      "<span>Bir şablon seçin; birkaç soru sorup belgeyi kapağı, bölümleri, "
                       "ipuçları ve örnekleriyle hazırlayalım. Renkleri ve yazı tiplerini sonraki adımda "
                       "değiştirebilirsiniz.</span>")
         head.setWordWrap(True)
@@ -227,7 +228,7 @@ class StartWizard(QDialog):
         self.desc.setText(
             f"<div style='font-size:13pt;font-weight:600'>{info['name']}</div>"
             f"<p>{info['desc']}</p>"
-            f"<p style='color:gray'>Varsayılan tasarım: {pal} · {fonts}</p>"
+            f"<p style='color:{CURRENT['theme']['muted']}'>Varsayılan tasarım: {pal} · {fonts}</p>"
             + (f"<b>Bölümler</b><ul style='margin-left:-20px'>{secs}</ul>" if secs else "")
             + (f"<b>İpuçları</b><ul style='margin-left:-20px'>{tips}</ul>" if tips else ""))
         self.next_btn.setEnabled(True)
@@ -249,7 +250,7 @@ class StartWizard(QDialog):
         v = QVBoxLayout()
         root.addLayout(v, 3)
         v.addWidget(QLabel(f"<span style='font-size:17pt;font-weight:600'>{info['name']}</span><br>"
-                           "<span style='color:gray'>Bildiklerinizi doldurun; boş bıraktıklarınız belgede "
+                           "<span>Bildiklerinizi doldurun; boş bıraktıklarınız belgede "
                            "gri yer tutucu olarak kalır, sonra tıklayıp yazabilirsiniz.</span>"))
         v.addSpacing(8)
         form = QFormLayout()
@@ -277,7 +278,8 @@ class StartWizard(QDialog):
             self.cite.currentIndexChanged.connect(self.preview_timer.start)
             form.addRow("Atıf stili:", self.cite)
             hint = QLabel("APA: sosyal bilimler, eğitim · IEEE: mühendislik, bilgisayar · MLA: dil-edebiyat")
-            hint.setStyleSheet("color: gray; font-size: 8pt;")
+            hint.setProperty("hint", True)
+            hint.setStyleSheet("font-size: 8pt;")
             form.addRow("", hint)
         v.addLayout(form)
         v.addSpacing(10)
@@ -328,12 +330,12 @@ class StartWizard(QDialog):
         # canlı önizleme
         pv = QVBoxLayout()
         root.addLayout(pv, 2)
-        cap = QLabel("<b>Canlı önizleme</b> <span style='color:gray'>— yazdıkça ve seçtikçe güncellenir</span>")
+        cap = QLabel("<b>Canlı önizleme</b> <span>— yazdıkça ve seçtikçe güncellenir</span>")
         pv.addWidget(cap)
         self.preview = QLabel("Hazırlanıyor…")
         self.preview.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.preview.setFixedSize(340, 482)
-        self.preview.setStyleSheet("background: #D7DBE1; border-radius: 8px;")
+        self.preview.setObjectName("previewBox")
         pv.addWidget(self.preview, 0, Qt.AlignmentFlag.AlignHCenter)
         nav = QHBoxLayout()
         prev_b = QPushButton("‹")

@@ -11,6 +11,11 @@ from PySide6.QtWidgets import (
 )
 
 from .common import turkish_lower
+from .theme import CURRENT
+
+
+def _muted():
+    return CURRENT["theme"]["muted"]
 
 
 class MiniBar(QFrame):
@@ -87,7 +92,8 @@ class CommandPalette(QDialog):
         self.list.setMinimumHeight(340)
         lay.addWidget(self.list)
         hint = QLabel("↑↓ seç · Enter çalıştır · Esc kapat")
-        hint.setStyleSheet("color: gray; font-size: 8pt;")
+        hint.setProperty("hint", True)
+        hint.setStyleSheet("font-size: 8pt;")
         lay.addWidget(hint)
         self.edit.textChanged.connect(self.refresh)
         self.edit.returnPressed.connect(self.run_current)
@@ -202,7 +208,8 @@ class CommentsPanel(QWidget):
             empty = QLabel("Henüz açıklama yok.\n\nMetin seçip Gözden Geçir › Yeni Açıklama\n"
                            "(Ctrl+Alt+M) ile ekleyin.")
             empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            empty.setStyleSheet("color: gray; padding: 30px 8px;")
+            empty.setProperty("hint", True)
+            empty.setStyleSheet("padding: 30px 8px;")
             empty.setWordWrap(True)
             self.cards.addWidget(empty)
         self.cards.addStretch(1)
@@ -230,7 +237,7 @@ class CommentsPanel(QWidget):
             date = datetime.datetime.fromisoformat(date.rstrip("Z")).strftime("%d.%m.%Y %H:%M")
         except ValueError:
             pass
-        who = QLabel(f"<b>{info.get('author') or 'Bilinmeyen'}</b><br><span style='color:gray;font-size:8pt'>{date}</span>")
+        who = QLabel(f"<b>{info.get('author') or 'Bilinmeyen'}</b><br><span style='color:{_muted()};font-size:8pt'>{date}</span>")
         head.addWidget(who, 1)
         v.addLayout(head)
         from PySide6.QtGui import QTextCursor
@@ -242,13 +249,14 @@ class CommentsPanel(QWidget):
             quote = quote[:77] + "…"
         q = QLabel(f"“{quote}”")
         q.setWordWrap(True)
-        q.setStyleSheet("color: gray; font-style: italic; border-left: 3px solid rgba(128,128,128,0.5); padding-left: 6px;")
+        q.setProperty("hint", True)
+        q.setStyleSheet("font-style: italic; border-left: 3px solid rgba(128,128,128,0.5); padding-left: 6px;")
         v.addWidget(q)
         body = QLabel(info.get("text") or "")
         body.setWordWrap(True)
         body.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         if info.get("resolved"):
-            body.setStyleSheet("color: gray;")
+            body.setProperty("hint", True)
         v.addWidget(body)
         row = QHBoxLayout()
         for label, fn in (("Git", lambda: e.select_comment(cid)),
@@ -320,7 +328,7 @@ class StartDialog(QDialog):
         hour = datetime.datetime.now().hour
         greet = "Günaydın" if 5 <= hour < 12 else "İyi günler" if hour < 18 else "İyi akşamlar"
         t = QLabel(f"<span style='font-size:22pt;font-weight:600'>{greet}</span><br>"
-                   "<span style='color:gray'>Yeni bir belge başlatın ya da kaldığınız yerden devam edin.</span>")
+                   "<span>Yeni bir belge başlatın ya da kaldığınız yerden devam edin.</span>")
         left.addWidget(t)
         left.addSpacing(12)
         grid = QGridLayout()

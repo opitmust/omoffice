@@ -114,7 +114,7 @@ class PageSetupDialog(QDialog):
                       "silmek için belgede o sayfanın üst/alt bilgisinin üzerine gelin: ✎ düzenle, ✕ sil."
                       + (f"<br><b>{n_over}</b> sayfada sayfaya özel ayar var." if n_over else ""))
         info.setWordWrap(True)
-        info.setStyleSheet("color: gray;")
+        info.setProperty("hint", True)
         v.addWidget(info)
         if n_over:
             clr = QPushButton("Sayfaya özel ayarların hepsini temizle")
@@ -187,7 +187,7 @@ class HeaderFooterDialog(QDialog):
         self.setWindowTitle(f"{name} — {page_no}. sayfa")
         self.removed = False
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel(f"<b>{name}</b> &nbsp;<span style='color:gray'>{page_no}. sayfa / toplam {total}</span>"))
+        lay.addWidget(QLabel(f"<b>{name}</b> &nbsp;<span>{page_no}. sayfa / toplam {total}</span>"))
         self.text = QPlainTextEdit(text)
         self.text.setMinimumSize(420, 80)
         lay.addWidget(self.text)
@@ -217,7 +217,8 @@ class HeaderFooterDialog(QDialog):
         hint = QLabel("İpucu: Sayfadaki üst/alt bilginin üzerine gelince çıkan ✕ ile o sayfadan hemen "
                       "silebilirsiniz; sağ tıkla daha fazla seçenek var.")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: gray; font-size: 8pt;")
+        hint.setProperty("hint", True)
+        hint.setStyleSheet("font-size: 8pt;")
         lay.addWidget(hint)
         bb = QHBoxLayout()
         rm = QPushButton("Bu sayfadan kaldır")

@@ -8,11 +8,11 @@ import traceback
 import uuid
 import zipfile
 
-from PySide6.QtCore import Qt, QTimer, QSize, QSizeF, QMarginsF, QUrl
+from PySide6.QtCore import Qt, QTimer, QSize, QSizeF, QMarginsF, QUrl, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import (
     QAction, QActionGroup, QColor, QFont, QIcon, QKeySequence, QPainter, QPixmap, QPageSize,
     QPageLayout, QPdfWriter, QTextCharFormat, QTextCursor, QTextDocumentWriter, QTextFormat,
-    QTextListFormat, QImage, QTextBlockFormat, QTextImageFormat, QDesktopServices,
+    QTextListFormat, QImage, QTextBlockFormat, QTextImageFormat, QDesktopServices, QPalette,
 )
 from PySide6.QtPrintSupport import QPrinter, QPrintDialog, QPrintPreviewDialog
 from PySide6.QtWidgets import (
@@ -20,7 +20,7 @@ from PySide6.QtWidgets import (
     QToolButton, QComboBox, QFontComboBox, QMenu, QFileDialog, QMessageBox, QColorDialog,
     QDockWidget, QTreeWidget, QTreeWidgetItem, QInputDialog, QWidgetAction, QSizePolicy,
     QApplication, QSlider, QLineEdit, QDialog, QListWidget, QListWidgetItem, QPushButton, QTableWidget,
-    QTableWidgetItem, QHeaderView,
+    QTableWidgetItem, QHeaderView, QGraphicsOpacityEffect,
 )
 
 from .common import (
@@ -586,11 +586,11 @@ class MainWindow(QMainWindow):
         wm_menu.addAction(self.actions["wm_remove"])
         theme_menu = QMenu(self)
         for name in THEMES:
-            theme_menu.addAction(f"{name} tema", lambda n=name: self.apply_theme(n, None))
+            theme_menu.addAction(f"{name} tema", lambda n=name: self.apply_theme(n, None, animate=True))
         theme_menu.addSeparator()
         for name in ACCENTS:
             theme_menu.addAction(text_icon("●", color=ACCENTS[name], scale=0.8), f"Vurgu: {name}",
-                                 lambda n=name: self.apply_theme(None, n))
+                                 lambda n=name: self.apply_theme(None, n, animate=True))
         design = page(
             self._group("Sayfa Arka Planı", [[
                 self._menu_button("Filigran", wm_menu, text_icon("Ⓦ", scale=0.6), True),
@@ -713,17 +713,21 @@ class MainWindow(QMainWindow):
         label = QLabel("Tablo ekle")
         cells = {}
 
+        t = CURRENT["theme"]
+        on = theme.tint(theme.derived(t, CURRENT["accent"])["accent_ui"], t["input"], 0.45)
+        cell_off = f"background: {t['input']}; border: 1px solid {t['input_border']};"
+        cell_on = f"background: {on}; border: 1px solid {theme.derived(t, CURRENT['accent'])['accent_ui']};"
+
         def hover(r, c):
             label.setText(f"{c + 1} × {r + 1} Tablo")
             for (rr, cc), b in cells.items():
-                b.setStyleSheet("background: %s; border: 1px solid #999;" %
-                                ("#BFD3F2" if rr <= r and cc <= c else "white"))
+                b.setStyleSheet(cell_on if rr <= r and cc <= c else cell_off)
 
         for r in range(8):
             for c in range(10):
                 b = QToolButton()
                 b.setFixedSize(16, 16)
-                b.setStyleSheet("background: white; border: 1px solid #999;")
+                b.setStyleSheet(cell_off)
                 b.setMouseTracking(True)
                 b.enterEvent = lambda _e, r=r, c=c: hover(r, c)
                 b.clicked.connect(lambda _=False, r=r, c=c: (menu.close(), self.editor.insert_table(r + 1, c + 1)))
@@ -1621,7 +1625,7 @@ class MainWindow(QMainWindow):
         dlg.setWindowTitle("Belge Kurtarma")
         dlg.resize(620, 380)
         v = QVBoxLayout(dlg)
-        v.addWidget(QLabel("<b>Kurtarılabilen belgeler</b><br><span style='color:gray'>OmOffice değişiklikleri 15 saniyede "
+        v.addWidget(QLabel(f"<b>Kurtarılabilen belgeler</b><br><span style='color:{CURRENT['theme']['muted']}'>OmOffice değişiklikleri 15 saniyede "
                            "bir kurtarma kopyasına yazar; 'Kaydetme' dediğiniz belgeler de 7 gün saklanır.</span>"))
         lst = QListWidget()
         for label, dp, jp, orig in entries:
@@ -1758,31 +1762,66 @@ class MainWindow(QMainWindow):
         self.view.focus_editor()
 
     # ---- tema
-    def apply_theme(self, name=None, accent=None):
+    def apply_theme(self, name=None, accent=None, animate=False):
         name = name or self.settings.value("theme", "Açık")
         accent = accent or self.settings.value("accent", "Lacivert")
         if name not in THEMES:
             name = "Açık"
         if accent not in ACCENTS:
             accent = "Lacivert"
+        fade = self._theme_fade_start() if animate else None
         CURRENT["theme"] = THEMES[name]
         CURRENT["accent"] = ACCENTS[accent]
         self.settings.setValue("theme", name)
         self.settings.setValue("accent", accent)
         t = THEMES[name]
+        d = theme.derived(t, ACCENTS[accent])
+        QApplication.setPalette(theme.app_palette())
         self.setStyleSheet(theme.style_sheet())
         self.view.set_colors(t["view_bg"], "#000000")
         self.ruler.set_colors({"bg": t["ruler_bg"], "margin": t["ruler_margin"], "text": t["ruler_text"],
-                               "tick": t["muted"], "marker": ACCENTS[accent]})
-        dark = QColor(t["panel"]).lightness() < 128
+                               "tick": t["muted"], "marker": d["accent_ui"]})
+        # sayfadaki seçim: vurgunun açık tonu, yazı siyah kalır (sayfa her temada beyaz)
+        pal = self.editor.palette()
+        pal.setColor(QPalette.ColorRole.Highlight, QColor(d["page_select"]))
+        pal.setColor(QPalette.ColorRole.HighlightedText, QColor("#000000"))
+        self.editor.setPalette(pal)
         for b in getattr(self, "style_chips", []):
             c = b.property("style_color") or t["text"]
-            if dark and b.property("style_color"):
-                c = QColor(c).lighter(190).name()
-            b.setStyleSheet(f"QToolButton {{ color: {c}; border: 1px solid rgba(128,128,128,0.3); "
+            c = theme.ensure_contrast(c, t["card"], 4.5)
+            b.setStyleSheet(f"QToolButton {{ color: {c}; border: 1px solid {t['border']}; "
                             f"padding: 2px 8px; }}")
         for w in self.findChildren(QWidget):
             w.update()
+        if fade is not None:
+            fade()
+
+    def _theme_fade_start(self):
+        """Tema değişirken eski görünümü üstte tutup yavaşça soldurur (çapraz geçiş)."""
+        if not self.isVisible():
+            return None
+        shot = QLabel(self)
+        shot.setPixmap(self.grab())
+        shot.setGeometry(self.rect())
+        shot.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        shot.show()
+        shot.raise_()
+        QApplication.processEvents()
+
+        def run():
+            # yeni temanın ilk (ağır) yeniden çizimi katmanın altında bitsin; yoksa geçişin ilk yarısını yutar
+            QApplication.processEvents()
+            eff = QGraphicsOpacityEffect(shot)
+            shot.setGraphicsEffect(eff)
+            anim = QPropertyAnimation(eff, b"opacity", shot)
+            anim.setDuration(260)
+            anim.setStartValue(1.0)
+            anim.setEndValue(0.0)
+            anim.setEasingCurve(QEasingCurve.Type.InOutQuad)
+            anim.finished.connect(shot.hide)
+            anim.finished.connect(shot.deleteLater)
+            anim.start()
+        return run
 
     def toggle_ruler(self, on):
         self.ruler.setVisible(on)
@@ -1848,7 +1887,7 @@ class MainWindow(QMainWindow):
             entries.append((a.text().replace("&", ""), cats.get(a, "Dosya"), a))
         for name in THEMES:
             a = QAction(f"{name} temaya geç", self)
-            a.triggered.connect(lambda _=False, n=name: self.apply_theme(n, None))
+            a.triggered.connect(lambda _=False, n=name: self.apply_theme(n, None, animate=True))
             entries.append((a.text(), "Tasarım", a))
         for name in STYLES:
             a = QAction(f"Stil uygula: {name}", self)

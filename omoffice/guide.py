@@ -132,7 +132,7 @@ KINDS = {
                  "Değerlendiriciler özgün değer ve yöntem uyumuna en çok puan verir."],
     },
     "ara_rapor": {
-        "name": "Ara Rapor (Proje / Bitirme / Tez)", "category": "Akademik", "icon": "",
+        "name": "Ara Rapor (Proje / Bitirme / Tez)", "category": "Akademik", "icon": "",
         "desc": "Üniversitelerde istenen ara (gelişme) rapor: dönemde yapılanlar, iş planına göre ilerleme, "
                 "ön bulgular, sorunlar, bütçe, sonraki dönem planı ve danışman onayı.",
         "fields": ["title", "author", "student_no", "department", "institution", "advisor", "date", "keywords"],
