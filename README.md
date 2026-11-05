@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" alt="OmOffice logosu" width="128"></p>
+
 # OmOffice
 
 Python ve PySide6 ile yazılmış, Türkçe arayüzlü, `.docx` odaklı masaüstü belge düzenleyici.

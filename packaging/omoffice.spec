@@ -41,6 +41,7 @@ a = Analysis(
     datas=[
         (os.path.join(ROOT, "omoffice", "dicts"), os.path.join("omoffice", "dicts")),
         (ICON, "omoffice"),
+        (os.path.join(ROOT, "omoffice", "omoffice.png"), "omoffice"),
     ] + collect_data_files("docx"),
     excludes=["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtWebEngineQuick"],
 )

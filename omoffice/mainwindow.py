@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from .common import (
     APP_NAME, STYLES, PAPER_SIZES, MARGIN_PRESETS, DEFAULT_SIZE, PageSetup,
-    app_data_dir, app_settings, pt2px,
+    app_data_dir, app_settings, pt2px, resource_dir,
 )
 from . import __version__, theme
 from .theme import glyph, text_icon, THEMES, ACCENTS, CURRENT
@@ -390,6 +390,16 @@ class MainWindow(QMainWindow):
         file_btn.setMenu(self.file_menu)
         self.file_menu.aboutToShow.connect(self._fill_file_menu)
         h.addWidget(file_btn)
+        emblem = QLabel()
+        emblem.setObjectName("appEmblem")
+        pm = QPixmap(os.path.join(resource_dir(), "omoffice.png"))
+        if not pm.isNull():
+            dpr = self.devicePixelRatioF()
+            pm = pm.scaled(round(24 * dpr), round(24 * dpr), Qt.AspectRatioMode.KeepAspectRatio,
+                           Qt.TransformationMode.SmoothTransformation)
+            pm.setDevicePixelRatio(dpr)
+            emblem.setPixmap(pm)
+            h.addWidget(emblem)
         logo = QLabel("OmOffice")
         logo.setObjectName("appName")
         h.addWidget(logo)
