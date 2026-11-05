@@ -131,6 +131,40 @@ KINDS = {
         "tips": ["Hedefleri 'X'i Y yöntemiyle Z düzeyinde ölçmek' gibi somut yazın.",
                  "Değerlendiriciler özgün değer ve yöntem uyumuna en çok puan verir."],
     },
+    "ara_rapor": {
+        "name": "Ara Rapor (Proje / Bitirme / Tez)", "category": "Akademik", "icon": "",
+        "desc": "Üniversitelerde istenen ara (gelişme) rapor: dönemde yapılanlar, iş planına göre ilerleme, "
+                "ön bulgular, sorunlar, bütçe, sonraki dönem planı ve danışman onayı.",
+        "fields": ["title", "author", "student_no", "department", "institution", "advisor", "date", "keywords"],
+        "citation": True, "cover": True, "toc": True,
+        "sections": [
+            ("Özet", 1, "Bu dönemde yapılan çalışmaları ve projenin geldiği noktayı 150–250 sözcükle özetleyin."),
+            ("Giriş ve Çalışmanın Amacı", 1, "Problemi ve projenin/tezin amacını kısaca hatırlatın; öneri "
+                                              "raporunuzdan özetleyebilirsiniz."),
+            ("Bu Dönemde Yapılan Çalışmalar", 1, "Rapor döneminde yapılan işleri iş paketlerine göre anlatın."),
+            ("Literatür Çalışmaları", 2, "Bu dönemde incelenen yeni kaynaklar ve çalışmaya katkıları."),
+            ("Yöntem ve Uygulama Çalışmaları", 2, "Kurulan düzenek, yazılan yazılım, toplanan veri ve yapılan "
+                                                  "analizler."),
+            ("İş-Zaman Çizelgesine Göre İlerleme", 1, "Planlanan ve gerçekleşen işleri karşılaştırın; her iş "
+                                                      "paketinin tamamlanma yüzdesini verin."),
+            ("Elde Edilen Ön Bulgular", 1, "Şu ana kadar elde edilen sonuçlar; tablo ve şekillerle destekleyin."),
+            ("Karşılaşılan Sorunlar ve Çözüm Önerileri", 1, "Gecikme, ekipman, veri vb. sorunlar ve alınan ya da "
+                                                            "alınacak önlemler."),
+            ("Plandan Sapmalar", 1, "Amaç, yöntem, takvim veya bütçede değişiklik varsa gerekçesiyle yazın; "
+                                    "yoksa 'Önerilen plandan sapma yoktur.' yazın."),
+            ("Bütçe Kullanımı", 1, "Destekli (BAP, TÜBİTAK vb.) projelerde dönem harcamaları ve kalan bütçe; "
+                                   "desteksiz çalışmalarda bu bölümü silin."),
+            ("Sonraki Dönem Çalışma Planı", 1, "Bir sonraki rapor dönemine kadar yapılacak işler ve takvimi."),
+            ("Danışman Görüşü ve Onay", 1, "Danışmanın çalışmanın ilerleyişine ilişkin görüşü ve imzası."),
+            ("Kaynakça", 1, "Raporda atıf yapılan kaynaklar."),
+            ("Ekler", 1, "Ölçüm verileri, kod çıktıları, anket formları, harcama belgeleri."),
+        ],
+        "tips": ["Ara raporu öneri raporundaki iş-zaman çizelgesiyle karşılaştırarak yazın; değerlendirici "
+                 "önce ilerlemeye bakar.",
+                 "Gecikmeleri saklamayın: nedenini ve telafi planını açıkça yazın.",
+                 "Bölümünüzün/enstitünüzün ara rapor formu varsa başlık sırasını ona göre düzenleyin.",
+                 "Teslimden önce danışmanınıza okutup imzalatın."],
+    },
     "literatur": {
         "name": "Literatür Taraması / Derleme", "category": "Akademik", "icon": "",
         "desc": "Bir konudaki çalışmaları sistematik biçimde özetleyen ve eleştiren derleme.",
