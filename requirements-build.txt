@@ -1,0 +1,3 @@
+# Yalnızca kurulum dosyası üretmek için (programı çalıştırmak için gerekmez)
+-r requirements.txt
+pyinstaller==6.22.3

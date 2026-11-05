@@ -36,11 +36,11 @@ def _report_fatal(log_path):
 def main():
     log_path = _setup_log()
     try:
-        from PySide6.QtGui import QFont, QImageReader
+        from PySide6.QtGui import QFont, QIcon, QImageReader
         from PySide6.QtWidgets import QApplication
 
-        from .common import APP_NAME, APP_ORG
-        from .mainwindow import MainWindow, glyph
+        from .common import APP_NAME, APP_ORG, resource_dir
+        from .mainwindow import MainWindow
 
         app = QApplication(sys.argv)
         app.setApplicationName(APP_NAME)
@@ -48,7 +48,7 @@ def main():
         app.setStyle("Fusion")
         app.setFont(QFont("Segoe UI", 9))
         QImageReader.setAllocationLimit(256)  # MB; dev boyutlu kötü niyetli resimlere karşı
-        app.setWindowIcon(glyph("", color="#2F5DA8", size=64, scale=0.7))
+        app.setWindowIcon(QIcon(os.path.join(resource_dir(), "omoffice.ico")))
         win = MainWindow(sys.argv[1] if len(sys.argv) > 1 else None)
     except Exception:
         _report_fatal(log_path)

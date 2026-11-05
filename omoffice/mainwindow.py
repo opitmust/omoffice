@@ -27,7 +27,7 @@ from .common import (
     APP_NAME, STYLES, PAPER_SIZES, MARGIN_PRESETS, DEFAULT_SIZE, PageSetup,
     app_data_dir, app_settings, pt2px,
 )
-from . import theme
+from . import __version__, theme
 from .theme import glyph, text_icon, THEMES, ACCENTS, CURRENT
 from .templates import build as build_template
 from .view import EditorView, Ruler
@@ -1693,7 +1693,7 @@ class MainWindow(QMainWindow):
             self._crashing = False
 
     def about(self):
-        QMessageBox.about(self, APP_NAME, f"<h3>{APP_NAME}</h3><p>Python + PySide6 ile yazılmış belge düzenleyici."
+        QMessageBox.about(self, APP_NAME, f"<h3>{APP_NAME} {__version__}</h3><p>Python + PySide6 ile yazılmış belge düzenleyici."
                                           "</p><p>.docx açar ve kaydeder; PDF'e aktarır.</p>")
 
     def closeEvent(self, e):

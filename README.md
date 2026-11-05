@@ -5,19 +5,44 @@ Windows için geliştirilir. Çevrimdışı çalışır, ağ bağlantısı kurma
 
 > Microsoft ile bir bağlantısı yoktur; "Word" ve "Office", Microsoft'un ticari markalarıdır.
 
-## Kurulum ve çalıştırma
+## İndirme ve kurulum
 
-1. [Python 3.12](https://www.python.org/downloads/) kurun ("Add python.exe to PATH" seçeneğini işaretleyin).
-2. Depoyu indirin:
-   ```
-   git clone https://github.com/opitmust/omoffice.git
-   ```
-3. `OmOffice.bat` dosyasına çift tıklayın.
+1. [Releases](https://github.com/opitmust/omoffice/releases/latest) sayfasından `OmOffice-Setup-<sürüm>.exe` dosyasını indirin.
+2. Çalıştırın. Python veya başka bir program gerekmez, yönetici izni istenmez.
+3. Kurulum bitince OmOffice açılır.
 
-İlk çalıştırmada proje klasöründe `.venv` ortamı oluşturulur ve bağımlılıklar indirilir (yaklaşık 700 MB).
-Sonraki açılışlarda bu adım atlanır; `requirements.txt` değişirse otomatik yenilenir.
+Ücretsizdir. 64 bit Windows 10/11 içindir; yaklaşık 50 MB indirir, 185 MB yer kaplar.
 
-Bir belgeyle açmak için: `OmOffice.bat belge.docx`
+**"Windows bilgisayarınızı korudu" uyarısı:** Kurulum dosyası henüz dijital olarak imzalanmadığı için çıkabilir.
+**Ek bilgi › Yine de çalıştır** ile devam edebilirsiniz. Dosyanın değişmediğini doğrulamak için yanındaki `.sha256`
+değerini karşılaştırın:
+
+```
+certutil -hashfile OmOffice-Setup-<sürüm>.exe SHA256
+```
+
+**Kaldırma:** Windows Ayarları › Uygulamalar › OmOffice › Kaldır. Kaydettiğiniz belgeler silinmez; ayarların ve
+kurtarma kopyalarının da silinip silinmeyeceği sorulur.
+
+OmOffice `.docx` dosyalarının varsayılan programını değiştirmez, yalnızca "Birlikte aç" listesine eklenir.
+
+## Kaynak koddan çalıştırma
+
+Geliştirme için [Python 3.12](https://www.python.org/downloads/) gerekir:
+
+```
+git clone https://github.com/opitmust/omoffice.git
+cd omoffice
+OmOffice.bat
+```
+
+İlk çalıştırmada `.venv` ortamı oluşturulur ve bağımlılıklar indirilir (yaklaşık 700 MB).
+
+Kurulum dosyasını üretmek için [Inno Setup 6](https://jrsoftware.org/isinfo.php) ve `requirements-build.txt` gerekir:
+
+```
+python packaging\build.py
+```
 
 ## Özellikler
 
@@ -38,7 +63,8 @@ Bir belgeyle açmak için: `OmOffice.bat belge.docx`
 
 ## Bilinen sınırlar
 
-- Henüz yok: sütunlar, metin kutuları ve şekiller, denklemler, belge karşılaştırma, `.doc` ve `.rtf` içe aktarma, yorum yanıtları, `.exe` paketi.
+- Henüz yok: sütunlar, metin kutuları ve şekiller, denklemler, belge karşılaştırma, `.doc` ve `.rtf` içe aktarma, yorum yanıtları, otomatik güncelleme.
+- Kurulum dosyası dijital olarak imzalı değildir.
 - Word yazı genişliklerini biraz farklı hesaplayabildiğinden uzun metinlerde satırlar farklı yerden kırılabilir.
 
 Önemli belgelerde yedek tutmanız önerilir.
