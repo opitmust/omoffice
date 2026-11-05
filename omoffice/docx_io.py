@@ -35,7 +35,7 @@ from docx.text.run import Run
 
 from .common import (
     TC_TYPE, TC_AUTHOR, TC_DATE, STYLE_PROP, STYLES, DOCX_TO_STYLE, PageSetup,
-    COMMENT_PROP, FOOTNOTE_PROP,
+    COMMENT_PROP, FOOTNOTE_PROP, IMAGE_SLOT_PREFIX, image_slot,
     px2pt, pt2px, DEFAULT_FONT, DEFAULT_SIZE,
 )
 from .editor import new_document
@@ -637,8 +637,11 @@ class _Exporter:
             if data:
                 w = imf.width() if imf.width() > 0 else img.width()
                 h = imf.height() if imf.height() > 0 else img.height() * (w / max(1, img.width()))
-                run.add_picture(io.BytesIO(data), width=Emu(int(w * EMU_PER_PX)),
-                                height=Emu(int(h * EMU_PER_PX)))
+                shape = run.add_picture(io.BytesIO(data), width=Emu(int(w * EMU_PER_PX)),
+                                        height=Emu(int(h * EMU_PER_PX)))
+                slot = image_slot(imf.name())
+                if slot:  # şablon alanı: yeniden açınca "Logo ekle" alanı olarak tanınsın
+                    shape._inline.docPr.set("descr", f"OmOffice:{slot}")
             # resim taban çizgisine oturur; alt boşluğu (descent) OmOffice'teki yazı boyutuyla aynı olsun
             f = cf.font().resolve(self.qdoc.defaultFont())
             run.font.size = Pt(1 if self.image_only else _half_pt(f.pointSizeF()))
@@ -1383,6 +1386,11 @@ class _Importer:
             return
         self.img_count += 1
         name = f"docx-img-{self.img_count}.png"
+        for pr in el.iter(qn("wp:docPr")):
+            descr = pr.get("descr") or ""
+            if descr.startswith("OmOffice:") and image_slot(f"{IMAGE_SLOT_PREFIX}{descr[9:]}-x"):
+                name = f"{IMAGE_SLOT_PREFIX}{descr[9:]}-{self.img_count}.png"
+            break
         self.qdoc.addResource(QTextDocument.ResourceType.ImageResource, QUrl(name), img)
         fmt = QTextImageFormat()
         fmt.setName(name)

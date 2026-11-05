@@ -15,7 +15,7 @@ from PySide6.QtWidgets import QTextEdit, QFrame, QMenu
 
 from .common import (
     TC_TYPE, TC_AUTHOR, TC_DATE, STYLE_PROP, STYLES, DEFAULT_FONT, DEFAULT_SIZE,
-    COMMENT_PROP, FOOTNOTE_PROP, TOC_PROP, PLACEHOLDER_PROP,
+    COMMENT_PROP, FOOTNOTE_PROP, TOC_PROP, PLACEHOLDER_PROP, IMAGE_SLOT_KINDS, image_slot,
     PageSetup, mm2px, pt2px, turkish_upper, turkish_lower, turkish_title, turkish_sort_key,
 )
 from .spell import DocHighlighter
@@ -320,6 +320,7 @@ class PageEdit(QTextEdit):
             p.restore()
         p.end()
         super().paintEvent(e)
+        self._paint_image_handles()
 
     def draw_page(self, p, doc, index, total, page_rect, line_numbers=None):
         """Sayfanın metin dışındaki her şeyini çizer: zemin, kenarlık, filigran,
@@ -727,22 +728,157 @@ class PageEdit(QTextEdit):
         return img
 
     def replace_image(self, pos, image):
-        """Konumdaki resmi aynı genişlikte (oran korunarak) yenisiyle değiştirir."""
+        """Konumdaki resmi yenisiyle değiştirir. Şablon alanıysa ("Logo ekle") resim alanın kutusuna oranı
+        korunarak sığdırılır; sıradan resimde genişlik korunur, yükseklik sayfaya sığar."""
         fmt = self._image_at(pos)
         if fmt is None or image.isNull():
             return False
         name = f"omoffice-img-{uuid.uuid4().hex[:10]}.png"
         self.document().addResource(QTextDocument.ResourceType.ImageResource, QUrl(name), image)
-        w = fmt.width() or image.width()
+        iw, ih = max(1, image.width()), max(1, image.height())
+        bw, bh = fmt.width() or iw, fmt.height() or ih
+        if image_slot(fmt.name()):
+            k = min(bw / iw, bh / ih)
+        else:
+            k = min(bw / iw, (self.page_px()[1] * 0.7) / ih)
         nf = QTextImageFormat(fmt)
         nf.setName(name)
-        nf.setWidth(w)
-        nf.setHeight(w * image.height() / max(1, image.width()))
+        nf.setWidth(iw * k)
+        nf.setHeight(ih * k)
         c = QTextCursor(self.document())
         c.setPosition(pos)
         c.setPosition(pos + 1, QTextCursor.MoveMode.KeepAnchor)
         c.setCharFormat(nf)
+        self._select_image(pos)
         return True
+
+    # ---------------------------------------------------------- resim seçme ve boyutlandırma
+    HANDLE = 8   # tutamaç kutusu (px)
+    _HANDLE_CURSORS = {"tl": Qt.CursorShape.SizeFDiagCursor, "br": Qt.CursorShape.SizeFDiagCursor,
+                       "tr": Qt.CursorShape.SizeBDiagCursor, "bl": Qt.CursorShape.SizeBDiagCursor,
+                       "t": Qt.CursorShape.SizeVerCursor, "b": Qt.CursorShape.SizeVerCursor,
+                       "l": Qt.CursorShape.SizeHorCursor, "r": Qt.CursorShape.SizeHorCursor}
+
+    def image_rect(self, pos):
+        """Satır içi resmin ekrandaki dikdörtgeni (görünüm koordinatları) ya da None."""
+        fmt = self._image_at(pos)
+        if fmt is None:
+            return None
+        c = QTextCursor(self.document())
+        c.setPosition(pos)
+        block = c.block()
+        line = block.layout().lineForTextPosition(pos - block.position())
+        if not line.isValid():
+            return None
+        cr = self.cursorRect(c)
+        w, h = fmt.width(), fmt.height()
+        top = cr.top() + line.ascent() - h
+        return QRectF(cr.left(), top, w, h)
+
+    def selected_image(self):
+        """Seçim tam olarak bir resimse konumunu döndürür."""
+        c = self.textCursor()
+        if c.selectionEnd() - c.selectionStart() == 1 and self._image_at(c.selectionStart()) is not None:
+            return c.selectionStart()
+        return None
+
+    def _select_image(self, pos):
+        c = QTextCursor(self.document())
+        c.setPosition(pos)
+        c.setPosition(pos + 1, QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(c)
+        self.viewport().update()
+
+    def image_at_point(self, pt):
+        pt = QPointF(pt)
+        c = self.cursorForPosition(pt.toPoint())
+        for p in (c.position(), c.position() - 1):
+            r = self.image_rect(p)
+            if r is not None and r.adjusted(-2, -2, 2, 2).contains(pt):
+                return p
+        return None
+
+    def _handles(self, r):
+        """Sekiz tutamaç: köşeler oranı korur, kenarlar tek yönde uzatır."""
+        pts = {"tl": r.topLeft(), "t": QPointF(r.center().x(), r.top()), "tr": r.topRight(),
+               "r": QPointF(r.right(), r.center().y()), "br": r.bottomRight(),
+               "b": QPointF(r.center().x(), r.bottom()), "bl": r.bottomLeft(), "l": QPointF(r.left(), r.center().y())}
+        k = self.HANDLE
+        return {name: QRectF(pt.x() - k / 2, pt.y() - k / 2, k, k) for name, pt in pts.items()}
+
+    def _handle_at(self, pt):
+        pos = self.selected_image()
+        if pos is None:
+            return None
+        r = self.image_rect(pos)
+        if r is None:
+            return None
+        for name, hr in self._handles(r).items():
+            if hr.adjusted(-3, -3, 3, 3).contains(QPointF(pt)):
+                return pos, name, r
+        return None
+
+    def _drag_rect(self, pt):
+        d = self._img_drag
+        r, name = QRectF(d["rect"]), d["handle"]
+        dx, dy = pt.x() - d["start"].x(), pt.y() - d["start"].y()
+        w0, h0 = r.width(), r.height()
+        w, h = w0, h0
+        if "r" in name:
+            w = w0 + dx
+        if "l" in name:
+            w = w0 - dx
+        if "b" in name:
+            h = h0 + dy
+        if name in ("t", "tl", "tr"):
+            h = h0 - dy
+        if len(name) == 2:   # köşe: oran korunur
+            k = max(w / w0, h / h0)
+            w, h = w0 * k, h0 * k
+        w = max(16.0, min(w, self.text_width()))
+        h = max(16.0, min(h, self.page_px()[1] * 0.85))
+        if len(name) == 2:
+            k = min(w / w0, h / h0)
+            w, h = w0 * k, h0 * k
+        x = r.right() - w if "l" in name else r.left()
+        y = r.bottom() - h if name in ("t", "tl", "tr") else r.top()
+        return QRectF(x, y, w, h)
+
+    def _paint_image_handles(self):
+        drag = getattr(self, "_img_drag", None)
+        pos = drag["pos"] if drag else self.selected_image()
+        if pos is None:
+            return
+        r = self.image_rect(pos)
+        if r is None:
+            return
+        from .theme import CURRENT, ensure_contrast
+        accent = QColor(ensure_contrast(CURRENT["accent"], "#FFFFFF", 3.0))
+        p = QPainter(self.viewport())
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        if drag and drag.get("preview") is not None:
+            pr = drag["preview"]
+            p.setPen(QPen(accent, 1.5, Qt.PenStyle.DashLine))
+            p.setBrush(QColor(accent.red(), accent.green(), accent.blue(), 25))
+            p.drawRect(pr)
+            label = f"{round(pr.width() * 25.4 / 96)} × {round(pr.height() * 25.4 / 96)} mm"
+            f = QFont(self.font())
+            f.setPixelSize(11)
+            p.setFont(f)
+            tr = QRectF(pr.left(), pr.bottom() + 4, 96, 18)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(0, 0, 0, 170))
+            p.drawRoundedRect(tr, 4, 4)
+            p.setPen(QColor("#FFFFFF"))
+            p.drawText(tr, int(Qt.AlignmentFlag.AlignCenter), label)
+            r = pr
+        p.setPen(QPen(accent, 1.2))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+        p.drawRect(r)
+        p.setBrush(QColor("#FFFFFF"))
+        for hr in self._handles(r).values():
+            p.drawRect(hr)
+        p.end()
 
     def image_names(self):
         names = set()
@@ -770,6 +906,20 @@ class PageEdit(QTextEdit):
                 return
             if edit_r.contains(pt) or not text:
                 self.hfEditRequested.emit(i + 1, which)
+                return
+        if e.button() == Qt.MouseButton.LeftButton:
+            hit = self._handle_at(e.position())
+            if hit is not None:
+                pos, name, r = hit
+                self._img_drag = {"pos": pos, "handle": name, "rect": r, "start": QPointF(e.position()),
+                                  "preview": None}
+                return
+            pos = self.image_at_point(e.position())
+            if pos is not None:
+                self.setFocus()
+                self._select_image(pos)                    # resme tıkla: seçilir, tutamaçlar çıkar
+                if image_slot(self._image_at(pos).name()):
+                    self.imageReplaceRequested.emit(pos)   # "Logo ekle" alanı: tek tıkla resim seç
                 return
         super().mousePressEvent(e)
 
@@ -806,6 +956,14 @@ class PageEdit(QTextEdit):
         return cf.toImageFormat() if cf.isImageFormat() else None
 
     def mouseReleaseEvent(self, e):
+        drag = getattr(self, "_img_drag", None)
+        if drag is not None:
+            self._img_drag = None
+            pr = drag.get("preview")
+            if pr is not None:
+                self.resize_image(drag["pos"], pr.width(), pr.height())
+            self.viewport().update()
+            return
         super().mouseReleaseEvent(e)
         if self.painter_format is not None and self.textCursor().hasSelection():
             cf, bf = self.painter_format
@@ -875,6 +1033,24 @@ class PageEdit(QTextEdit):
         self.cursorVisibilityRequested.emit()
 
     def mouseMoveEvent(self, e):
+        drag = getattr(self, "_img_drag", None)
+        if drag is not None:
+            drag["preview"] = self._drag_rect(QPointF(e.position()))
+            self.viewport().update()
+            return
+        if not e.buttons():
+            handle = self._handle_at(e.position())
+            if handle is not None:
+                self.viewport().setCursor(self._HANDLE_CURSORS[handle[1]])
+                self.viewport().setToolTip("Sürükleyerek boyutlandırın (köşeler oranı korur)")
+                return
+            ip = self.image_at_point(e.position())
+            if ip is not None:
+                slot = image_slot(self._image_at(ip).name())
+                self.viewport().setCursor(Qt.CursorShape.PointingHandCursor)
+                self.viewport().setToolTip(f"{IMAGE_SLOT_KINDS[slot]}: tıklayıp bir resim seçin" if slot else
+                                           "Tıklayın: seçip köşelerinden boyutlandırın · çift tık: boyut ayarı")
+                return
         super().mouseMoveEvent(e)
         pos = e.position().toPoint()
         hit = self.hf_hit(pos) if not e.buttons() else None
@@ -943,6 +1119,12 @@ class PageEdit(QTextEdit):
                 and (cur.atBlockStart() or cur.hasSelection()):
             self.change_list_level(-1 if key == Qt.Key.Key_Backtab or mods & Qt.KeyboardModifier.ShiftModifier else 1)
             return
+        table_key = key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete) and not ctrl_only
+        if table_key and not self.isReadOnly() and not self.track_changes \
+                and self._table_key(cur, key == Qt.Key.Key_Backspace):
+            return
+        if not self.isReadOnly() and text and text.isprintable() and not ctrl_only:
+            self._heal_block(cur)
         if not self.isReadOnly():
             if self.track_changes:
                 if key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
@@ -1144,6 +1326,7 @@ class PageEdit(QTextEdit):
 
     def insertFromMimeData(self, source):
         c = self.textCursor()
+        self._heal_block(c)
         c.beginEditBlock()
         if self.track_changes and c.hasSelection():
             self._tc_mark_deleted(c, True)
@@ -1417,6 +1600,30 @@ class PageEdit(QTextEdit):
         c = self.textCursor()
         c.insertImage(fmt)
         self.setTextCursor(c)
+
+    def delete_image(self, pos):
+        if self._image_at(pos) is None:
+            return False
+        c = QTextCursor(self.document())
+        c.setPosition(pos)
+        c.setPosition(pos + 1, QTextCursor.MoveMode.KeepAnchor)
+        c.removeSelectedText()
+        self.setTextCursor(c)
+        return True
+
+    def resize_image(self, pos, w, h):
+        fmt = self._image_at(pos)
+        if fmt is None:
+            return False
+        nf = QTextImageFormat(fmt)
+        nf.setWidth(round(w, 1))
+        nf.setHeight(round(h, 1))
+        c = QTextCursor(self.document())
+        c.setPosition(pos)
+        c.setPosition(pos + 1, QTextCursor.MoveMode.KeepAnchor)
+        c.setCharFormat(nf)
+        self._select_image(pos)
+        return True
 
     def image_bytes(self, name):
         res = self.document().resource(QTextDocument.ResourceType.ImageResource, QUrl(name))
@@ -1819,8 +2026,125 @@ class PageEdit(QTextEdit):
         elif op == "split":
             t.splitCell(r, col, 1, 1)
         elif op == "delete":
-            t.removeRows(0, t.rows())
+            self._delete_table(t)
+        elif op == "select":
+            self._select_table(t)
         return True
+
+    # Word'deki gibi: tablonun tamamı seçiliyken Backspace/Delete tabloyu, tam satırlar seçiliyken
+    # satırları, tam sütunlar seçiliyken sütunları siler. Tablonun hemen altında Backspace (ya da hemen
+    # üstünde Delete) önce tabloyu seçer; ikinci basış siler.
+    def _table_key(self, cur, backspace):
+        chosen = getattr(self, "_chosen_table", None)
+        if chosen is not None and cur.hasSelection() and chosen[1] == (cur.anchor(), cur.position()):
+            # _select_table ile seçilmiş tablo (1×1 kutularda Qt bunu hücre içi seçim sayar)
+            t = cur.currentTable()
+            if t is not None:
+                self._delete_table(t)
+                return True
+        if cur.hasComplexSelection():
+            t = cur.currentTable()
+            if t is None:
+                return False
+            fr, nr, fc, nc = cur.selectedTableCells()
+            if nr == t.rows() and nc == t.columns():
+                self._delete_table(t)
+            elif nc == t.columns():
+                t.removeRows(fr, nr)
+            elif nr == t.rows():
+                t.removeColumns(fc, nc)
+            else:
+                return False   # birkaç hücre: Qt içeriklerini temizler
+            return True
+        if cur.hasSelection():
+            # tabloyu tümüyle içine alan sıradan bir seçim (tablo + çevresi) Qt'de zaten silinir;
+            # ardından kalan görünmez satırları onar
+            if self._selection_has_table(cur):
+                c = QTextCursor(cur)
+                c.beginEditBlock()
+                c.removeSelectedText()
+                self._heal_around(c)
+                c.endEditBlock()
+                self.setTextCursor(c)
+                return True
+            return False
+        block = cur.block()
+        if backspace and cur.atBlockStart():
+            near = block.previous()
+        elif not backspace and cur.atBlockEnd():
+            near = block.next()
+        else:
+            return False
+        if not near.isValid():
+            return False
+        t = QTextCursor(near).currentTable()
+        if t is None or cur.currentTable() is t:
+            return False
+        self._select_table(t)
+        return True
+
+    def _selection_has_table(self, cur):
+        start, end = cur.selectionStart(), cur.selectionEnd()
+        it = self.document().rootFrame().begin()
+        while not it.atEnd():
+            f = it.currentFrame()
+            if f is not None and start < f.firstPosition() and f.lastPosition() < end:
+                return True
+            it += 1
+        return False
+
+    def _select_table(self, t):
+        last = t.cellAt(t.rows() - 1, t.columns() - 1)
+        c = QTextCursor(self.document())
+        c.setPosition(t.cellAt(0, 0).firstPosition())
+        c.setPosition(last.lastPosition(), QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(c)
+        self._chosen_table = (t, (c.anchor(), c.position()))
+
+    def _delete_table(self, t):
+        self._chosen_table = None
+        c = QTextCursor(self.document())
+        c.beginEditBlock()
+        at = t.firstPosition() - 1
+        t.removeRows(0, t.rows())
+        c.setPosition(max(0, min(at, self.document().characterCount() - 1)))
+        self._heal_around(c)
+        c.endEditBlock()
+        self.setTextCursor(c)
+
+    @staticmethod
+    def _is_spacer(block):
+        """Şablonların tablo önüne/ardına koyduğu neredeyse sıfır yükseklikli satır."""
+        bf = block.blockFormat()
+        fixed = bf.lineHeightType() == QTextBlockFormat.LineHeightTypes.FixedHeight.value
+        tiny_line = fixed and bf.lineHeight() < pt2px(6)
+        tiny_font = 0 < block.charFormat().fontPointSize() < 4
+        return tiny_line or tiny_font
+
+    def _heal_block(self, cur):
+        """Görünmez satıra yazı yazılacaksa satırı normal boyuta döndürür (sayfa sonu korunur)."""
+        block = cur.block()
+        if block.text() or not self._is_spacer(block):
+            return
+        c = QTextCursor(block)
+        bf = block.blockFormat()
+        bf.setLineHeight(100, QTextBlockFormat.LineHeightTypes.ProportionalHeight.value)
+        bf.setBottomMargin(pt2px(DEFAULT_SIZE * 0.6))
+        c.setBlockFormat(bf)
+        cf = QTextCharFormat()
+        cf.setFontPointSize(self.document().defaultFont().pointSizeF() or DEFAULT_SIZE)
+        c.setBlockCharFormat(cf)
+        self.setCurrentCharFormat(cf)
+
+    def _heal_around(self, c):
+        """Tablo silindikten sonra imlecin kaldığı görünmez satırı normal boş satıra çevirir.
+        Diğer görünmez satırlar sıfır yükseklikte kaldıkları için zararsızdır."""
+        block = c.block()
+        for b in (block, block.next(), block.previous()):
+            if b.isValid() and not b.text() and QTextCursor(b).currentTable() is None and self._is_spacer(b):
+                c.setPosition(b.position())
+                self._heal_block(c)
+                return
 
     def set_cell_background(self, color):
         c = self.textCursor()
@@ -1927,11 +2251,17 @@ class PageEdit(QTextEdit):
             menu.addSeparator()
         for p in (c.position(), c.position() - 1):
             if self._image_at(p) is not None:
-                menu.addAction("Resmi değiştir…", lambda p=p: self.imageReplaceRequested.emit(p))
+                slot = image_slot(self._image_at(p).name())
+                menu.addAction(f"{IMAGE_SLOT_KINDS[slot]}…" if slot else "Resmi değiştir…",
+                               lambda p=p: self.imageReplaceRequested.emit(p))
                 menu.addAction("Resim boyutu…", lambda p=p: self.imageEditRequested.emit(p))
+                menu.addAction("Resmi sil", lambda p=p: self.delete_image(p))
                 menu.addSeparator()
                 break
         if cur.currentTable() is not None:
+            menu.addAction("Tabloyu sil", lambda: self.table_op("delete"))
+            menu.addAction("Satırı sil", lambda: self.table_op("del_row"))
+            menu.addAction("Tabloyu seç", lambda: self.table_op("select"))
             tm = menu.addMenu("Tablo")
             for label, op in (("Üste satır ekle", "row_above"), ("Alta satır ekle", "row_below"),
                               ("Sola sütun ekle", "col_left"), ("Sağa sütun ekle", "col_right"),

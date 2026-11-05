@@ -25,7 +25,7 @@ from PySide6.QtWidgets import (
 
 from .common import (
     APP_NAME, STYLES, PAPER_SIZES, MARGIN_PRESETS, DEFAULT_SIZE, PageSetup,
-    app_data_dir, app_settings, pt2px, resource_dir,
+    app_data_dir, app_settings, pt2px, resource_dir, image_slot, IMAGE_SLOT_KINDS,
 )
 from . import __version__, theme
 from .theme import glyph, text_icon, THEMES, ACCENTS, CURRENT
@@ -1042,6 +1042,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, APP_NAME, "Resim açılamadı.")
             return
         self.editor.insert_image(img)
+        # eklenen resim seçili gelsin: köşelerinden hemen boyutlandırılabilir
+        self.editor._select_image(self.editor.textCursor().position() - 1)
+        self.statusBar().showMessage("Resim eklendi. Köşelerinden sürükleyerek boyutlandırabilirsiniz.", 5000)
 
     def edit_image(self, pos):
         e = self.editor
@@ -1971,13 +1974,18 @@ class MainWindow(QMainWindow):
 
     def replace_image(self, pos):
         """Şablondaki logo/fotoğraf yer tutucusunu ya da herhangi bir resmi yenisiyle değiştirir."""
-        path, _ = QFileDialog.getOpenFileName(self, "Resmi Değiştir", self._dir(),
+        fmt = self.editor._image_at(pos)
+        slot = image_slot(fmt.name()) if fmt is not None else None
+        title = IMAGE_SLOT_KINDS[slot].replace(" ekle", " Seç").title() if slot else "Resmi Değiştir"
+        path, _ = QFileDialog.getOpenFileName(self, title, self._dir(),
                                               "Resimler (*.png *.jpg *.jpeg *.bmp *.gif *.webp)")
         if not path:
             return
         img = QImage(path)
         if img.isNull() or not self.editor.replace_image(pos, img):
-            QMessageBox.warning(self, APP_NAME, "Resim değiştirilemedi.")
+            QMessageBox.warning(self, APP_NAME, "Resim açılamadı ya da değiştirilemedi.")
+            return
+        self.statusBar().showMessage("Resim yerleştirildi. Köşelerinden sürükleyerek boyutlandırabilirsiniz.", 5000)
 
     def edit_page_hf(self, page_no, which):
         """Sayfadaki üst/alt bilgiye tıklanınca: o sayfaya özel düzenleme (eksi sayfa = tüm sayfalar)."""

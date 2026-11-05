@@ -25,6 +25,19 @@ PLACEHOLDER_PROP = _UP + 6  # şablondaki "[buraya yazın]" yer tutucu metni
 STYLE_PROP = _UP + 10
 TOC_PROP = _UP + 11      # içindekiler paragrafı
 
+# Şablondaki resim alanları ("Logo ekle", "Fotoğraf ekle"): resim adı bu önekle başlar; .docx'te resmin
+# açıklamasına (alt metin) "OmOffice:<tür>" yazılır, yeniden açınca alan yine tanınır.
+IMAGE_SLOT_PREFIX = "slot-"
+IMAGE_SLOT_KINDS = {"logo": "Logo ekle", "photo": "Fotoğraf ekle"}
+
+
+def image_slot(name):
+    """Resim adı bir şablon alanına aitse türünü (logo/photo) döndürür."""
+    if name and name.startswith(IMAGE_SLOT_PREFIX):
+        kind = name[len(IMAGE_SLOT_PREFIX):].split("-", 1)[0]
+        return kind if kind in IMAGE_SLOT_KINDS else None
+    return None
+
 DEFAULT_FONT = "Calibri"
 DEFAULT_SIZE = 11.0
 

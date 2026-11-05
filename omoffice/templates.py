@@ -15,7 +15,7 @@ from PySide6.QtGui import (
     QTextLength, QTextListFormat, QTextTableFormat,
 )
 
-from .common import STYLE_PROP, PLACEHOLDER_PROP, pt2px, mm2px, turkish_upper
+from .common import STYLE_PROP, PLACEHOLDER_PROP, IMAGE_SLOT_PREFIX, pt2px, mm2px, turkish_upper
 from .guide import KINDS, match_section, format_reference, in_text
 
 MONTHS = ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül",
@@ -171,17 +171,25 @@ def thin_band(theme, w, h=6):
     return img
 
 
-def logo_placeholder(theme, size=70, text="LOGO"):
+def logo_placeholder(theme, size=70, text="Logo ekle"):
+    """Tıklanınca resim seçilen logo alanı: kesik çizgili yuvarlak kutu, ortada + ve "Logo ekle"."""
     img, p = _img(size, size)
+    r = size * 0.16
     p.setPen(QPen(QColor(theme.muted), 1.2, Qt.PenStyle.DashLine))
     p.setBrush(QColor(theme.tint))
-    p.drawEllipse(QRectF(2, 2, size - 4, size - 4))
+    p.drawRoundedRect(QRectF(2, 2, size - 4, size - 4), r, r)
+    plus = QPen(QColor(theme.accent), max(1.5, size * 0.035))
+    plus.setCapStyle(Qt.PenCapStyle.RoundCap)
+    p.setPen(plus)
+    cx, cy, k = size / 2, size * 0.40, size * 0.1
+    p.drawLine(QPointF(cx - k, cy), QPointF(cx + k, cy))
+    p.drawLine(QPointF(cx, cy - k), QPointF(cx, cy + k))
     f = QFont("Segoe UI", 1)
-    f.setPixelSize(int(size * 0.17))
+    f.setPixelSize(max(8, int(size * 0.16)))
     f.setBold(True)
     p.setFont(f)
     p.setPen(QColor(theme.muted))
-    p.drawText(QRectF(0, 0, size, size), int(Qt.AlignmentFlag.AlignCenter), text)
+    p.drawText(QRectF(0, size * 0.54, size, size * 0.24), int(Qt.AlignmentFlag.AlignCenter), text)
     p.end()
     return img
 
@@ -386,8 +394,10 @@ class Builder:
         return self
 
     # ---- resim
-    def image(self, img, w_px, h_px, align=Qt.AlignmentFlag.AlignHCenter, after=6):
-        name = f"tpl-{uuid.uuid4().hex[:10]}.png"
+    def image(self, img, w_px, h_px, align=Qt.AlignmentFlag.AlignHCenter, after=6, slot=None):
+        """slot: "logo"/"photo" ise tıklanınca resim seçilen şablon alanı olur."""
+        prefix = f"{IMAGE_SLOT_PREFIX}{slot}-" if slot else "tpl-"
+        name = f"{prefix}{uuid.uuid4().hex[:10]}.png"
         self.doc.addResource(QTextDocument.ResourceType.ImageResource, QUrl(name), img)
         self._emit(self.c, self.fresh, [("", self.cf())], self.bf(align=align, after=after, first=0, line=100))
         self.fresh = False
@@ -681,7 +691,7 @@ def _tez(b, a, opts):
         b.p("[… BİLİMLERİ ENSTİTÜSÜ]", bold=True, size=big, align=C, after=2, first=0, placeholder=True)
         b.p(turkish_upper(a("department")) + " ANABİLİM DALI" if a("department") else "[… ANABİLİM DALI]",
             bold=True, size=big, align=C, after=24, first=0, placeholder=not a("department"))
-        b.image(logo_placeholder(t, 96, "LOGO"), 96, 96, after=36)
+        b.image(logo_placeholder(t, 96), 96, 96, after=36, slot="logo")
         if a("title"):
             b.p(turkish_upper(a("title")), bold=True, size=big + 2, align=C, after=36, first=0, line=130)
         else:
@@ -781,7 +791,8 @@ def _cover_modern(b, a, kind_label, subtitle_ph, info_pairs, art="waves"):
              align=Qt.AlignmentFlag.AlignLeft)
     b.ph(subtitle_ph, size=t.size * 1.25, after=30, first=0, align=Qt.AlignmentFlag.AlignLeft)
     b.info_grid(info_pairs)
-    b.spacer(70)
+    b.spacer(12)
+    b.image(logo_placeholder(t, 64), 64, 64, align=Qt.AlignmentFlag.AlignLeft, after=10, slot="logo")
     b.image(thin_band(t, b.tw * 0.35, 4), b.tw * 0.35, 4, align=Qt.AlignmentFlag.AlignLeft, after=4)
     b.p(a("institution") or "[Kurum adı]", bold=True, color=t.dark, placeholder=not a("institution"), first=0,
         align=Qt.AlignmentFlag.AlignLeft, after=0)
@@ -847,7 +858,7 @@ def _odev(b, a, opts, kind="odev"):
     b.setup((25, 25, 25, 25), header=(a("course") or "")[:60], header_align="right", footer="{SAYFA}",
             different_first=True)
     if opts.get("cover", True):
-        b.image(logo_placeholder(t, 72), 72, 72, after=10)
+        b.image(logo_placeholder(t, 72), 72, 72, after=10, slot="logo")
         b.p(turkish_upper(a("institution")) if a("institution") else "[ÜNİVERSİTE / OKUL ADI]", bold=True,
             color=t.dark, size=t.size * 1.15, align=C, first=0, after=2, placeholder=not a("institution"))
         b.ph("Fakülte / Bölüm", align=C, first=0, after=14, size=t.size * 0.95)
@@ -954,7 +965,7 @@ def _ara_rapor(b, a, opts):
         b.ph("… Fakültesi / … Enstitüsü", align=C, first=0, after=2, size=t.size * 0.95)
         b.p(turkish_upper(a("department")) + " BÖLÜMÜ" if a("department") else "[… BÖLÜMÜ / ANABİLİM DALI]",
             align=C, first=0, after=14, size=t.size * 0.95, placeholder=not a("department"))
-        b.image(logo_placeholder(t, 80), 80, 80, after=14)
+        b.image(logo_placeholder(t, 80), 80, 80, after=14, slot="logo")
         b.image(ornament(t, 180, 16), 180, 16, after=70)
         if a("title"):
             b.p(a("title"), font=t.title_font, size=t.size * 2.1, color=t.dark, align=C, first=0, after=10,
@@ -1117,6 +1128,7 @@ def _mektup(b, a, opts):
     t = b.t
     R = Qt.AlignmentFlag.AlignRight
     b.setup((25, 22, 25, 25), header="", footer="")
+    b.image(logo_placeholder(t, 56), 56, 56, align=Qt.AlignmentFlag.AlignLeft, after=8, slot="logo")
     b.p(a("author") or "[Ad Soyad]", font=t.title_font, size=t.size * 2.4, color=t.accent, first=0, after=2,
         placeholder=not a("author"), align=Qt.AlignmentFlag.AlignLeft)
     b.runs([("[Unvan / meslek]", dict(placeholder=True, caps="small", spacing=1.0))], first=0, after=6,
@@ -1169,7 +1181,7 @@ def _ozgecmis(b, a, opts):
     b.setup((16, 16, 18, 18), header="", footer="")
     hdr = b._table(1, 2, [20, 80], border=0, padding=4)
     img = photo_placeholder(t, 104)
-    res = f"tpl-{uuid.uuid4().hex[:10]}.png"
+    res = f"{IMAGE_SLOT_PREFIX}photo-{uuid.uuid4().hex[:10]}.png"
     b.doc.addResource(QTextDocument.ResourceType.ImageResource, QUrl(res), img)
     cur = hdr.cellAt(0, 0).firstCursorPosition()
     fmt = QTextImageFormat()
