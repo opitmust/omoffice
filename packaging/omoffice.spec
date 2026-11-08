@@ -42,7 +42,8 @@ a = Analysis(
         (os.path.join(ROOT, "omoffice", "dicts"), os.path.join("omoffice", "dicts")),
         (ICON, "omoffice"),
         (os.path.join(ROOT, "omoffice", "omoffice.png"), "omoffice"),
-    ] + collect_data_files("docx"),
+    ] + collect_data_files("docx") + collect_data_files("pdfminer"),  # pdfminer: CMap tabloları
+    hiddenimports=["PySide6.QtPdf"],
     excludes=["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtWebEngineQuick"],
 )
 pyz = PYZ(a.pure)

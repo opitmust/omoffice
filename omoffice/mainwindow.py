@@ -37,6 +37,7 @@ from .wizard import StartWizard
 from .guidepanel import GuidePanel, CitationDialog, add_reference
 from .templates import build_kind
 from .odt_io import import_odt
+from .pdf_io import PdfImportError, import_pdf
 from .safety import sanitize_html, sanitize_markdown, UnsafeFileError
 from .dialogs import (
     PageSetupDialog, ParagraphDialog, TableDialog, ImageSizeDialog, LinkDialog, SymbolDialog,
@@ -758,7 +759,8 @@ class MainWindow(QMainWindow):
             recent.addAction("(boş)").setEnabled(False)
         imp = m.addMenu("İçe Aktar")
         for label, kind in (("Word belgesi / şablonu (.docx, .dotx, .docm)…", "word"),
-                            ("OpenDocument metni (.odt)…", "odt"), ("Web sayfası (.html)…", "html"),
+                            ("OpenDocument metni (.odt)…", "odt"), ("PDF belgesi (.pdf)…", "pdf"),
+                            ("Web sayfası (.html)…", "html"),
                             ("Markdown (.md)…", "md"), ("Düz metin (.txt)…", "txt")):
             imp.addAction(label, lambda k=kind: self.file_open(k))
         exp = m.addMenu("Dışa Aktar")
@@ -1309,11 +1311,12 @@ class MainWindow(QMainWindow):
             self._set_doc(new_document(), PageSetup(), None)
 
     OPEN_FILTERS = {
-        None: "Desteklenen belgeler (*.docx *.dotx *.docm *.dotm *.odt *.html *.htm *.txt *.md);;"
-              "Word belgesi (*.docx *.dotx *.docm *.dotm);;OpenDocument metni (*.odt);;"
+        None: "Desteklenen belgeler (*.docx *.dotx *.docm *.dotm *.odt *.pdf *.html *.htm *.txt *.md);;"
+              "Word belgesi (*.docx *.dotx *.docm *.dotm);;OpenDocument metni (*.odt);;PDF belgesi (*.pdf);;"
               "Web sayfası (*.html *.htm);;Düz metin (*.txt);;Markdown (*.md);;Tüm dosyalar (*)",
         "word": "Word belgesi / şablonu (*.docx *.dotx *.docm *.dotm)",
         "odt": "OpenDocument metni (*.odt)",
+        "pdf": "PDF belgesi (*.pdf)",
         "html": "Web sayfası (*.html *.htm)",
         "md": "Markdown (*.md)",
         "txt": "Düz metin (*.txt)",
@@ -1332,7 +1335,14 @@ class MainWindow(QMainWindow):
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         meta = {}
         try:
-            if ext in (".docx", ".dotx", ".docm", ".dotm"):
+            head = b""
+            if ext not in (".docx", ".dotx", ".docm", ".dotm", ".odt"):
+                with open(path, "rb") as f:
+                    head = f.read(8192)
+            if ext == ".pdf" or head.startswith(b"%PDF"):
+                ext = ".pdf"
+                doc, setup, meta = import_pdf(path)
+            elif ext in (".docx", ".dotx", ".docm", ".dotm"):
                 doc, setup, meta = import_docx(path)
             elif ext == ".odt":
                 doc, setup, meta = import_odt(path)
@@ -1341,6 +1351,9 @@ class MainWindow(QMainWindow):
                     f"Eski/başka biçimdeki ({ext}) dosyalar doğrudan açılamıyor.\n"
                     "Ücretsiz LibreOffice ya da Word ile .docx olarak kaydedip yeniden deneyin.")
             else:
+                if b"\x00" in head or head[:4] in (b"PK\x03\x04", b"\xd0\xcf\x11\xe0"):
+                    raise UnsafeFileError("Bu dosya düz metin değil (ikili ya da desteklenmeyen biçim); "
+                                          "açılırsa okunamayan karakterler görünür.")
                 if os.path.getsize(path) > 50 * 1024 * 1024:
                     raise UnsafeFileError("Metin dosyası çok büyük (50 MB üstü).")
                 doc, setup = new_document(), PageSetup()
@@ -1353,7 +1366,7 @@ class MainWindow(QMainWindow):
                 else:
                     QTextCursor(doc).insertText(data)
                 doc.setModified(False)
-        except UnsafeFileError as exc:
+        except (UnsafeFileError, PdfImportError) as exc:
             QApplication.restoreOverrideCursor()
             QMessageBox.warning(self, APP_NAME, f"Dosya açılamadı:\n{path}\n\n{exc}")
             return False
@@ -1373,7 +1386,8 @@ class MainWindow(QMainWindow):
         if meta.get("warnings"):
             QMessageBox.information(self, APP_NAME, "\n".join(meta["warnings"]))
         if not native:
-            self.statusBar().showMessage("İçe aktarıldı. Kaydederken Word (.docx) olarak kaydedilecek.", 6000)
+            self.statusBar().showMessage(
+                meta.get("notice") or "İçe aktarıldı. Kaydederken Word (.docx) olarak kaydedilecek.", 9000)
         return True
 
     def file_save(self):
