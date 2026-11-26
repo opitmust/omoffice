@@ -1,6 +1,8 @@
 """Temalar ve temaya duyarlı simgeler."""
-from PySide6.QtCore import Qt, QRect, QPoint
-from PySide6.QtGui import QColor, QFont, QIcon, QIconEngine, QPainter, QPalette, QPixmap
+from PySide6.QtCore import Qt, QRect, QPoint, QPointF
+from PySide6.QtGui import (QColor, QFont, QIcon, QIconEngine, QLinearGradient, QPainter, QPalette, QPixmap,
+                           QRadialGradient)
+from PySide6.QtWidgets import QFrame
 
 THEMES = {
     "Açık": {
@@ -162,7 +164,91 @@ def derived(t, a):
         "rail_checked_text": t["text"] if dark else ensure_contrast(a, t["checked"], 4.6),
         "accent_ui": accent_ui,                     # kenarlar, onay kutusu, cetvel işareti
         "page_select": tint(a, "#FFFFFF", 0.28),    # sayfadaki metin seçimi (siyah yazı okunur kalır)
+    } | glass(t, a)
+
+
+def glass(t, a):
+    """Cam yüzeylerin renkleri. Üst çubuk koyu vurgu camıdır (beyaz yazı); sağ sütun (ray ve panel) temanın
+    zeminine vurgu sızmış açık camdır (tema yazısı). Parlama katmanları yazının en kötü yerinde bile
+    kontrastı bozmasın diye renkler parlamalı halleriyle denetlenir."""
+    dark = is_dark(t)
+    sheen = 0.10 if dark else 0.38          # üst kenardaki beyaz parlamanın en yüksek örtücülüğü
+    bar = ensure_contrast(a, "#FFFFFF", 5.9)
+    rail = tint(a, t["panel"], 0.20 if dark else 0.13)
+    panel = tint(a, t["window"], 0.10 if dark else 0.06)
+    rail_hi, panel_hi = _over("#FFFFFF", rail, sheen), _over("#FFFFFF", panel, sheen * 0.6)
+    checked = tint(a, t["panel"], 0.34 if dark else 0.24)
+    return {
+        "glass_bar": bar,
+        "glass_bar_top": _over("#FFFFFF", bar, 0.13),      # parlamalı üst kısım (beyaz yazı burada da okunur)
+        "glass_bar_bottom": QColor(bar).darker(118).name(),
+        "glass_rail": rail, "glass_rail_top": rail_hi,
+        "glass_panel": panel, "glass_panel_top": panel_hi,
+        "glass_checked": checked,
+        "glass_rail_text": ensure_contrast(t["muted"], [rail, rail_hi], 4.5),
+        "glass_checked_text": ensure_contrast(t["text"] if dark else a, [checked], 4.6),
+        "glass_dark": dark,
     }
+
+
+_GLASS_CACHE = {}
+
+
+def paint_glass(p, rect, kind):
+    """Cam yüzey: dikey renk geçişi, üst yarıda yumuşak parlama, ışık alan ince üst/sol kenar."""
+    key = (id(CURRENT["theme"]), CURRENT["accent"])
+    if _GLASS_CACHE.get("key") != key:     # her yeniden çizimde kontrast hesabı yapılmasın
+        _GLASS_CACHE.update(key=key, g=derived(CURRENT["theme"], CURRENT["accent"]))
+    g = _GLASS_CACHE["g"]
+    r = rect
+    p.save()
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    p.setPen(Qt.PenStyle.NoPen)
+    lin = QLinearGradient(QPointF(r.topLeft()), QPointF(r.bottomLeft()))
+    if kind == "bar":
+        lin.setColorAt(0, QColor(g["glass_bar_top"]))
+        lin.setColorAt(0.5, QColor(g["glass_bar"]))
+        lin.setColorAt(1, QColor(g["glass_bar_bottom"]))
+    else:
+        lin.setColorAt(0, QColor(g[f"glass_{kind}_top"]))
+        lin.setColorAt(0.35, QColor(g[f"glass_{kind}"]))
+        lin.setColorAt(1, QColor(g[f"glass_{kind}"]))
+    p.fillRect(r, lin)
+    # çapraz yumuşak ışık lekesi: camın kalınlık hissi
+    glow = QRadialGradient(QPointF(r.left() + r.width() * 0.22, r.top()), max(r.width(), r.height()) * 0.55)
+    hi = QColor("#FFFFFF")
+    hi.setAlphaF(0.10 if kind == "bar" or g["glass_dark"] else 0.22)
+    glow.setColorAt(0, hi)
+    hi.setAlphaF(0)
+    glow.setColorAt(1, hi)
+    p.fillRect(r, glow)
+    line = QColor("#FFFFFF")
+    line.setAlphaF(0.30 if kind == "bar" else (0.10 if g["glass_dark"] else 0.65))
+    if kind == "bar":
+        p.fillRect(r.left(), r.top(), r.width(), 1, line)
+        shade = QColor("#000000")
+        shade.setAlphaF(0.22)
+        p.fillRect(r.left(), r.bottom(), r.width(), 1, shade)
+    else:
+        p.fillRect(r.left() + 1, r.top(), 1, r.height(), line)
+        edge = QColor(g["accent_ui"])
+        edge.setAlphaF(0.35)
+        p.fillRect(r.left(), r.top(), 1, r.height(), edge)
+    p.restore()
+
+
+class GlassFrame(QFrame):
+    """Arka planını vurgu renginden cam olarak kendisi çizen çerçeve. Windows 11 stili düz QWidget'ların
+    stil sayfası arka planını yok saydığından renk burada çizilir; tema değişince yeniden çizilir."""
+
+    def __init__(self, kind, parent=None):
+        super().__init__(parent)
+        self.kind = kind
+
+    def paintEvent(self, e):
+        p = QPainter(self)
+        paint_glass(p, self.rect(), self.kind)
+        p.end()
 
 
 def app_palette():
@@ -184,6 +270,17 @@ def app_palette():
     for role in (R.WindowText, R.Text, R.ButtonText):
         pal.setColor(G.Disabled, role, QColor(t["icon_disabled"]))
     return pal
+
+
+def menu_style():
+    """Menü kuralları. Sayfa (editör) grafik sahnesine gömülü olduğundan ana pencerenin stil sayfası
+    onun bağlam menülerine ulaşmaz; editör bu kuralları menülerine ayrıca uygular."""
+    t = CURRENT["theme"]
+    return f"""QMenu {{{{ background: {t['menu']}; color: {t['text']}; border: 1px solid {t['border']}; padding: 4px; }}}}
+QMenu::item {{{{ padding: 5px 22px 5px 22px; border-radius: 4px; color: {t['text']}; }}}}
+QMenu::item:selected {{{{ background: {t['hover']}; color: {t['text']}; }}}}
+QMenu::item:disabled {{{{ color: {t['icon_disabled']}; }}}}
+QMenu::separator {{{{ height: 1px; background: {t['border']}; margin: 4px 8px; }}}}"""
 
 
 def style_sheet():
@@ -220,10 +317,7 @@ QComboBox, QFontComboBox, QLineEdit, QSpinBox, QDoubleSpinBox, QPlainTextEdit, Q
     border: 1px solid {t['input_border']}; border-radius: 4px; padding: 2px 5px;
     background: {t['input']}; color: {t['text']}; min-height: 20px; }}
 QComboBox QAbstractItemView {{ background: {t['menu']}; color: {t['text']}; selection-background-color: {bar}; selection-color: white; }}
-QMenu {{ background: {t['menu']}; color: {t['text']}; border: 1px solid {t['border']}; padding: 4px; }}
-QMenu::item {{ padding: 5px 22px 5px 22px; border-radius: 4px; }}
-QMenu::item:selected {{ background: {t['hover']}; }}
-QMenu::separator {{ height: 1px; background: {t['border']}; margin: 4px 8px; }}
+{menu_style()}
 QStatusBar {{ background: {bar}; color: white; }}
 QStatusBar QLabel {{ color: white; padding: 0 8px; background: transparent; }}
 QStatusBar QToolButton {{ color: white; }}
@@ -254,21 +348,24 @@ QCheckBox::indicator:checked {{ background: {a}; border-color: {a}; }}
 QTabWidget::pane {{ border: 1px solid {t['border']}; }}
 QTabBar::tab {{ background: {t['window']}; color: {t['text']}; padding: 6px 12px; }}
 QTabBar::tab:selected {{ background: {t['panel']}; }}
-QWidget#topBar {{ background: {bar}; }}
-QWidget#topBar QLabel {{ color: white; }}
+QFrame#topBar {{ background: transparent; border: none; }}
+QFrame#topBar QLabel {{ color: white; }}
 QLabel#appName {{ font-size: 12pt; font-weight: 700; padding-left: 4px; }}
 QLabel#docTitle {{ font-size: 10pt; font-weight: 600; }}
 QToolButton#docPath {{ color: {d['path_text']}; font-size: 8pt; padding: 0; border: none; }}
 QToolButton#docPath:hover {{ color: white; text-decoration: underline; background: transparent; }}
 QToolButton#fileButton {{ min-width: 64px; }}
-QFrame#rail {{ background: {t['panel']}; border-left: 1px solid {t['border']}; }}
-QToolButton#railButton {{ font-size: 8pt; color: {t['muted']}; border-radius: 8px; }}
-QToolButton#railButton:checked {{ background: {t['checked']}; color: {sel_text};
+QFrame#rail {{ background: transparent; border: none; }}
+QToolButton#railButton {{ font-size: 8pt; color: {d['glass_rail_text']}; border-radius: 8px; }}
+QToolButton#railButton:hover {{ background: rgba(255,255,255,{'0.08' if d['glass_dark'] else '0.55'});
+    border-color: transparent; }}
+QToolButton#railButton:checked {{ background: {d['glass_checked']}; color: {d['glass_checked_text']};
     border: none; border-right: 3px solid {a}; font-weight: 600; }}
-QFrame#sidePanel {{ background: {t['window']}; border-left: 1px solid {t['border']}; }}
-QFrame#sidePanel QScrollArea, QFrame#sidePanel QStackedWidget > QWidget {{ background: {t['window']}; }}
-QWidget#ribbonPage {{ background: {t['window']}; }}
-QLabel#panelTitle {{ font-size: 13pt; font-weight: 600; padding: 12px 14px 6px 14px; background: {t['window']}; }}
+QFrame#sidePanel {{ background: transparent; border: none; }}
+QFrame#sidePanel QScrollArea, QFrame#sidePanel QStackedWidget, QFrame#sidePanel QStackedWidget > QWidget,
+QFrame#sidePanel QScrollArea > QWidget > QWidget {{ background: transparent; }}
+QWidget#ribbonPage {{ background: transparent; }}
+QLabel#panelTitle {{ font-size: 13pt; font-weight: 600; padding: 12px 14px 6px 14px; background: transparent; }}
 QFrame#group {{ background: {t['card']}; border: 1px solid {t['border']}; border-radius: 10px; }}
 QLabel#groupTitle {{ color: {t['muted']}; font-size: 7.5pt; font-weight: 600; letter-spacing: 1px; }}
 QToolButton#wideButton {{ padding: 3px 8px; }}

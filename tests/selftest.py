@@ -287,6 +287,74 @@ def main():
     check(e.document().toPlainText().endswith("© bu bir Test. Caps lock. "),
           f"İKi BAşharf / cAPS LOCK düzeltmesi: {e.document().toPlainText()!r}")
 
+    # Seçilen yazı tipi Enter'dan sonra da sürer (otomatik düzeltme ve boş satır onu düşürmemeli)
+    def font_after(steps):
+        win._set_doc(new_document(), PageSetup(), None)
+        for s in steps:
+            if s == "pick":
+                win.font_box.textActivated.emit("Georgia")
+            elif s == "enter":
+                enter(e)
+            else:
+                type_keys(e, s)
+        type_keys(e, "yeni")
+        c = QTextCursor(e.document().lastBlock())
+        c.movePosition(QTextCursor.MoveOperation.EndOfBlock)
+        return (c.charFormat().fontFamilies() or ["?"])[0]
+    for name, steps in (("tek sözcük düzeltilince", ["merhaba", "pick", "enter"]),
+                        ("boş sayfada", ["pick", "enter"]),
+                        ("iki kez Enter", ["abc def", "pick", "enter", "enter"]),
+                        ("boşluktan sonra", ["ali", "pick", " ", "enter"])):
+        fam = font_after(steps)
+        check(fam == "Georgia", f"yazı tipi Enter'dan sonra korunur ({name}): {fam}")
+
+    # Başka programdan yapıştırma biçimi korur (Word <style> kuralları, web px boyutları, başlıklar)
+    from PySide6.QtCore import QMimeData
+
+    def paste_html(html):
+        win._set_doc(new_document(), PageSetup(), None)
+        md = QMimeData()
+        md.setHtml(html)
+        e.insertFromMimeData(md)
+        app.processEvents()
+
+    def fmt_of(word):
+        i = e.document().toPlainText().find(word)
+        c = QTextCursor(e.document())
+        c.setPosition(i + 1)
+        f = c.charFormat()
+        return (f.fontFamilies() or ["?"])[0], f.fontPointSize()
+    paste_html("""<html><head><style><!--
+@font-face {font-family:"Cambria Math"; panose-1:2 4 5 3 5 4 6 3 2 4;}
+p.MsoNormal, li.MsoNormal, div.MsoNormal {margin-bottom:8.0pt; font-size:12.0pt; font-family:"Times New Roman",serif;}
+@page WordSection1 {size:595.3pt 841.9pt; margin:70.85pt;}
+div.WordSection1 {page:WordSection1;}
+--></style></head><body lang=TR><div class=WordSection1><!--StartFragment-->
+<p class=MsoNormal>Wordmetni burada</p><!--EndFragment--></div></body></html>""")
+    check(fmt_of("Wordmetni") == ("Times New Roman", 12.0), f"Word'den yapıştırma biçimi korur: {fmt_of('Wordmetni')}")
+    paste_html('<h2 style="font-family: Roboto, Arial; font-size: 24px">Webbaslik</h2>'
+               '<p style="font-family: Verdana; font-size: 16px">Webmetin</p><h1>Duzbaslik</h1>')
+    check(fmt_of("Webbaslik") == ("Roboto", 18.0) and fmt_of("Webmetin") == ("Verdana", 12.0),
+          f"web sayfasından yapıştırma px→punto: {fmt_of('Webbaslik')} {fmt_of('Webmetin')}")
+    check(fmt_of("Duzbaslik")[1] == 22.0, f"yapıştırılan başlık boyutu puntoya çevrilir: {fmt_of('Duzbaslik')}")
+
+    # Fare tekerleği sayfanın üstündeyken de kaydırır
+    win._set_doc(new_document(), PageSetup(), None)
+    e.textCursor().insertText("satır\n" * 300)
+    app.processEvents()
+    from PySide6.QtCore import QPoint as _QP, QPointF as _QPF
+    from PySide6.QtGui import QWheelEvent
+    sb = win.view.verticalScrollBar()
+    sb.setValue(sb.maximum() // 2)
+    before = sb.value()
+    vp = win.view.viewport()
+    mid = _QP(vp.width() // 2, vp.height() // 2)
+    QApplication.sendEvent(vp, QWheelEvent(_QPF(mid), _QPF(vp.mapToGlobal(mid)), _QP(0, 0), _QP(0, -120),
+                                           Qt.MouseButton.NoButton, Qt.KeyboardModifier.NoModifier,
+                                           Qt.ScrollPhase.NoScrollPhase, False))
+    app.processEvents()
+    check(sb.value() > before, f"tekerlek sayfanın üstünde kaydırır: {before} → {sb.value()}")
+
     # Tüm belgede büyük harf düzeltmesi
     win._set_doc(new_document(), PageSetup(), None)
     e.autocorrect = False

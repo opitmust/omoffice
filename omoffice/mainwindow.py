@@ -375,9 +375,8 @@ class MainWindow(QMainWindow):
         return b
 
     def _build_topbar(self):
-        bar = QWidget()
+        bar = theme.GlassFrame("bar")
         bar.setObjectName("topBar")
-        bar.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         bar.setFixedHeight(48)
         h = QHBoxLayout(bar)
         h.setContentsMargins(0, 0, 8, 0)
@@ -1795,6 +1794,11 @@ class MainWindow(QMainWindow):
         d = theme.derived(t, ACCENTS[accent])
         QApplication.setPalette(theme.app_palette())
         self.setStyleSheet(theme.style_sheet())
+        # Windows 11 stili pencere stilindeki üst çubuk yazı rengini uygulamıyor; cam çubuğa doğrudan verilir
+        self.topbar.setStyleSheet(
+            "QLabel { color: white; background: transparent; }"
+            f"QToolButton#docPath {{ color: {d['path_text']}; font-size: 8pt; padding: 0; border: none; }}"
+            "QToolButton#docPath:hover { color: white; text-decoration: underline; background: transparent; }")
         self.view.set_colors(t["view_bg"], "#000000")
         self.ruler.set_colors({"bg": t["ruler_bg"], "margin": t["ruler_margin"], "text": t["ruler_text"],
                                "tick": t["muted"], "marker": d["accent_ui"]})

@@ -69,6 +69,16 @@ def pairs(t, a, derived):
         ("sayfada seçili siyah yazı / seçim zemini", "#000000", d["page_select"], 7.0),
         ("seçim zemini / sayfa (seçim görünür)", d["page_select"], "#FFFFFF", 1.3),
         ("belge alanı / sayfa (beyaz)", t["view_bg"], "#FFFFFF", 1.15),
+        ("beyaz yazı / cam üst çubuk (parlak üst)", "#FFFFFF", d["glass_bar_top"], 4.5),
+        ("beyaz yazı / cam üst çubuk", "#FFFFFF", d["glass_bar"], 4.5),
+        ("soluk beyaz (dosya yolu) / cam üst çubuk", d["path_text"], d["glass_bar"], 4.5),
+        ("ray yazısı / cam ray", d["glass_rail_text"], d["glass_rail"], 4.5),
+        ("ray yazısı / cam ray (parlak üst)", d["glass_rail_text"], d["glass_rail_top"], 4.5),
+        ("seçili ray yazısı / cam seçili zemin", d["glass_checked_text"], d["glass_checked"], 4.5),
+        ("simge / cam ray", t["icon"], d["glass_rail"], 3.0),
+        ("metin / cam panel", t["text"], d["glass_panel"], 4.5),
+        ("metin / cam panel (parlak üst)", t["text"], d["glass_panel_top"], 4.5),
+        ("soluk metin / cam panel", t["muted"], d["glass_panel"], 4.5),
     ]
     return out
 

@@ -5,6 +5,8 @@ from PySide6.QtWidgets import (
     QButtonGroup,
 )
 
+from .theme import GlassFrame
+
 PANEL_WIDTH = 318
 
 
@@ -17,7 +19,7 @@ class SidePanel(QWidget):
         h = QHBoxLayout(self)
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(0)
-        self.panel = QFrame()
+        self.panel = GlassFrame("panel")
         self.panel.setObjectName("sidePanel")
         self.panel.setFixedWidth(PANEL_WIDTH)
         pv = QVBoxLayout(self.panel)
@@ -28,7 +30,7 @@ class SidePanel(QWidget):
         pv.addWidget(self.header)
         self.stack = QStackedWidget()
         pv.addWidget(self.stack, 1)
-        self.rail = QFrame()
+        self.rail = GlassFrame("rail")
         self.rail.setObjectName("rail")
         self.rail.setFixedWidth(68)
         self.rail_layout = QVBoxLayout(self.rail)
@@ -51,6 +53,11 @@ class SidePanel(QWidget):
             area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
             widget.setMaximumWidth(PANEL_WIDTH - 14)  # uzun metinler kaydırma yerine satır kaydırsın
             area.setWidget(widget)
+            # sayfa zemini saydam: altındaki cam panel görünsün
+            area.viewport().setAutoFillBackground(False)
+            widget.setAutoFillBackground(False)
+            area.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+            area.viewport().setStyleSheet("background: transparent;")
             self.stack.addWidget(area)
         else:
             self.stack.addWidget(widget)

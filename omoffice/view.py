@@ -1,7 +1,7 @@
 """Yakınlaştırılabilir sayfa görünümü ve cetvel."""
 from PySide6.QtCore import Qt, QPointF, QRectF, Signal, QTimer
 from PySide6.QtGui import QColor, QPainter, QPolygonF, QTransform, QFont, QPen, QTextBlockFormat, QTextCursor
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QFrame, QWidget
+from PySide6.QtWidgets import QAbstractScrollArea, QGraphicsView, QGraphicsScene, QFrame, QWidget
 
 from .common import mm2px, px2mm
 
@@ -122,7 +122,9 @@ class EditorView(QGraphicsView):
             self.viewChanged.emit()
             e.accept()
             return
-        super().wheelEvent(e)
+        # Tekerlek olayını sahneye (sayfaya) göndermeden doğrudan kaydır: sahnedeki editör olayı
+        # yok saysa da Qt onu kabul edilmiş sayıyor ve sayfanın üstündeyken kaydırma hiç olmuyordu.
+        QAbstractScrollArea.wheelEvent(self, e)
 
     def ensure_cursor(self):
         r = QRectF(self.editor.cursorRect())

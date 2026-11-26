@@ -4,7 +4,7 @@ import os
 import re
 import uuid
 
-from PySide6.QtCore import Qt, QRectF, QPointF, QSizeF, QUrl, Signal, QBuffer, QIODevice, QByteArray
+from PySide6.QtCore import Qt, QRectF, QPointF, QSizeF, QUrl, Signal, QBuffer, QIODevice, QByteArray, QMimeData
 from PySide6.QtGui import (
     QAbstractTextDocumentLayout, QColor, QDesktopServices, QFont, QImage, QPainter,
     QPalette, QTextBlockFormat, QTextCharFormat, QTextCursor, QTextDocument,
@@ -42,6 +42,30 @@ BULLET_STYLES = [QTextListFormat.Style.ListDisc, QTextListFormat.Style.ListCircl
                  QTextListFormat.Style.ListSquare]
 NUMBER_STYLES = [QTextListFormat.Style.ListDecimal, QTextListFormat.Style.ListLowerAlpha,
                  QTextListFormat.Style.ListLowerRoman]
+
+
+# Yapıştırılan HTML'de başlık ve <big>/<small> göreli boyutları (Qt FontSizeAdjustment) → tarayıcı oranları
+_ADJUST_SCALE = {-2: 0.67, -1: 0.83, 0: 1.0, 1: 1.17, 2: 1.5, 3: 2.0, 4: 2.4}
+
+
+def prepare_paste_html(html):
+    """Başka programdan gelen HTML'yi Qt'nin biçimi kaybetmeden okuyacağı hale getirir.
+    Word (ve Outlook) yazı tipi/boyut kurallarını <style><!-- ... --></style> içinde gönderir; Qt yorum
+    içindeki kuralları tamamen atlar, metin Calibri 11'e düşer. Ayrıca Qt'nin CSS okuyucusu @page gibi
+    @ kurallarından ve gövdedeki <!--StartFragment--> yorumlarından sonra kalan kuralları uygulamıyor."""
+    def clean_css(m):
+        css = m.group(2).replace("<!--", "").replace("-->", "")
+        css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+        css = re.sub(r"@[\w-]+[^{;]*\{[^{}]*\}", "", css)       # @page, @font-face, @list …
+        return m.group(1) + css + m.group(3)
+    styles = []
+
+    def keep(m):
+        styles.append(clean_css(m))
+        return f"\x00{len(styles) - 1}\x00"
+    html = re.sub(r"(<style[^>]*>)(.*?)(</style>)", keep, html, flags=re.S | re.I)
+    html = re.sub(r"<!--.*?-->", "", html, flags=re.S)        # StartFragment, [if mso] blokları
+    return re.sub(r"\x00(\d+)\x00", lambda m: styles[int(m.group(1))], html)
 
 
 def clean_tc(fmt):
@@ -1246,10 +1270,15 @@ class PageEdit(QTextEdit):
                 return
             style = self.current_style_name()
             at_end = cur.atBlockEnd()
+            # Satır sonunda seçilmiş ama henüz yazılmamış biçim (ör. yazı tipi) yeni satıra geçsin; Qt boş
+            # satırda Enter'a basınca bu bekleyen biçimi düşürüyor.
+            pending = self.currentCharFormat() if at_end and not cur.hasSelection() else None
             if self.track_changes and cur.hasSelection():
                 self._tc_mark_deleted(cur, True)
                 self.setTextCursor(cur)
             super().keyPressEvent(e)
+            if pending is not None:
+                self.setCurrentCharFormat(clean_tc(pending))
             c = self.textCursor()
             bf = c.blockFormat()
             if bf.pageBreakPolicy() != QTextFormat.PageBreakFlag.PageBreak_Auto:
@@ -1350,10 +1379,12 @@ class PageEdit(QTextEdit):
             start = block.position() + m.start(1)
             rc.setPosition(start)
             rc.setPosition(c.position(), QTextCursor.MoveMode.KeepAnchor)
-            fmt = rc.charFormat()
+            # Düzeltilen sözcük kendi biçimini korur; imleçte bekleyen biçim (ör. az önce seçilen yazı tipi
+            # ya da boyutu) ise geri konur, yoksa Enter/boşluktan sonra yazılan metin eski biçime döner.
+            pending = self.currentCharFormat()
             self.type_text(repl, rc)
             self.setTextCursor(rc)
-            self.setCurrentCharFormat(clean_tc(fmt))
+            self.setCurrentCharFormat(clean_tc(pending))
 
     def fix_capitalization(self, apply=True):
         """Belgedeki cümle başı, özel ad, İKi BAşharf ve cAPS LOCK hatalarını bulur/düzeltir."""
@@ -1493,9 +1524,17 @@ class PageEdit(QTextEdit):
             img = QImage(source.imageData())
             if not img.isNull():
                 self.insert_image(img)
+        elif source.hasHtml():
+            md = QMimeData()
+            md.setHtml(prepare_paste_html(source.html()))
+            if source.hasText():
+                md.setText(source.text())
+            super().insertFromMimeData(md)
         else:
             super().insertFromMimeData(source)
         end = self.textCursor().position()
+        if source.hasHtml():
+            self._normalize_pasted_sizes(start, end)
         m = QTextCursor(self.document())
         m.setPosition(start)
         m.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
@@ -1508,6 +1547,26 @@ class PageEdit(QTextEdit):
                     m.setPosition(b, QTextCursor.MoveMode.KeepAnchor)
                     m.setCharFormat(clean_tc(cf))
         c.endEditBlock()
+
+    def _normalize_pasted_sizes(self, start, end):
+        """Yapıştırılan metindeki piksel ve göreli boyutları puntoya çevirir: boyut kutusu, kaydetme ve
+        biçim boyacısı yalnızca puntoyu tanır (web sayfaları px, başlıklar göreli boyut taşır)."""
+        base = self.document().defaultFont().pointSizeF() or DEFAULT_SIZE
+        px, adj = QTextFormat.Property.FontPixelSize, QTextFormat.Property.FontSizeAdjustment
+        m = QTextCursor(self.document())
+        for a, b, _kind, cf in reversed(self.tc_segments(start, end)):
+            if cf.isImageFormat() or not (cf.hasProperty(px) or cf.hasProperty(adj)):
+                continue
+            f = QTextCharFormat(cf)
+            if cf.hasProperty(px) and cf.intProperty(px) > 0:
+                f.setFontPointSize(round(cf.intProperty(px) * 0.75 * 2) / 2)
+            elif not cf.hasProperty(QTextFormat.Property.FontPointSize):
+                f.setFontPointSize(round(base * _ADJUST_SCALE.get(cf.intProperty(adj), 1.0) * 2) / 2)
+            f.clearProperty(px)
+            f.clearProperty(adj)
+            m.setPosition(a)
+            m.setPosition(b, QTextCursor.MoveMode.KeepAnchor)
+            m.setCharFormat(f)
 
     def tc_resolve(self, accept, start=0, end=None):
         segs = [s for s in self.tc_segments(start, end) if s[2]]
@@ -2319,11 +2378,21 @@ class PageEdit(QTextEdit):
                 cell.setFormat(f)
 
     # ---------------------------------------------------------- bağlam menüsü
+    def _themed_menu(self):
+        # Editör grafik sahnesinde olduğu için ana pencerenin stilini almaz ve paleti sayfaya göre
+        # (siyah yazı) ayarlıdır; menü temanın paletini ve menü kurallarını açıkça alır.
+        from PySide6.QtWidgets import QApplication
+        from . import theme
+        menu = QMenu(self)
+        menu.setPalette(QApplication.palette())
+        menu.setStyleSheet(theme.menu_style())
+        return menu
+
     def _hf_menu(self, e, page_index, which):
         n = page_index + 1
         name = "üst bilgi" if which == "header" else "alt bilgi"
         text, _ = self.setup.hf_for(which, n)
-        menu = QMenu(self)
+        menu = self._themed_menu()
         menu.addAction(f"{name.capitalize()} — sayfa {n}").setEnabled(False)
         menu.addAction("Bu sayfada düzenle…", lambda: self.hfEditRequested.emit(n, which))
         if text:
@@ -2346,7 +2415,7 @@ class PageEdit(QTextEdit):
         if hit is not None:
             self._hf_menu(e, hit[0], hit[1])
             return
-        menu = QMenu(self)
+        menu = self._themed_menu()
         _, ph = self.page_px()
         page_no = int(e.pos().y() // ph) + 1
         if self.page_is_empty(page_no):
