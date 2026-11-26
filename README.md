@@ -91,4 +91,10 @@ Test edilen ortam: Windows 11, Python 3.12.
 
 ## Lisans
 
+Copyright (C) 2026 Ömer Faruk
+
+OmOffice özgür yazılımdır: [GNU Genel Kamu Lisansı sürüm 3](LICENSE) ya da (isteğinize bağlı olarak)
+sonraki herhangi bir sürümü koşullarıyla kullanabilir, değiştirebilir ve dağıtabilirsiniz. Değiştirilmiş
+sürümleri dağıtanlar kaynak kodunu da aynı lisansla açmalıdır. Program hiçbir garanti olmaksızın sunulur.
+
 Üçüncü taraf bileşenler için [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) dosyasına bakın.

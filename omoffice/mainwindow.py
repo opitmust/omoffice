@@ -1724,7 +1724,10 @@ class MainWindow(QMainWindow):
 
     def about(self):
         QMessageBox.about(self, APP_NAME, f"<h3>{APP_NAME} {__version__}</h3><p>Python + PySide6 ile yazılmış belge düzenleyici."
-                                          "</p><p>.docx açar ve kaydeder; PDF'e aktarır.</p>")
+                                          "</p><p>.docx açar ve kaydeder; PDF'e aktarır.</p>"
+                                          "<p>Copyright © 2026 Ömer Faruk<br>GNU GPL sürüm 3 veya sonrası ile lisanslıdır; "
+                                          "hiçbir garanti verilmez. Ayrıntılar program klasöründeki LICENSE.txt ve "
+                                          "THIRD_PARTY_NOTICES.md dosyalarındadır.</p>")
 
     def closeEvent(self, e):
         if self.maybe_save():

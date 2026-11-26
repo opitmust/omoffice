@@ -15,7 +15,7 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = os.path.join(ROOT, "packaging", "omoffice.spec")
 PACKAGES = ["PySide6", "PySide6_Essentials", "PySide6_Addons", "shiboken6", "python-docx", "lxml", "spylls",
-            "typing_extensions", "pyinstaller"]
+            "typing_extensions", "pdfminer.six", "pyinstaller"]
 
 
 def version():
@@ -35,6 +35,7 @@ def copy_licenses(app_dir):
     out = os.path.join(app_dir, "licenses")
     os.makedirs(out, exist_ok=True)
     shutil.copy(os.path.join(ROOT, "THIRD_PARTY_NOTICES.md"), app_dir)
+    shutil.copy(os.path.join(ROOT, "LICENSE"), os.path.join(app_dir, "LICENSE.txt"))
     shutil.copy(os.path.join(sys.base_prefix, "LICENSE.txt"), os.path.join(out, "Python-LICENSE.txt"))
     shutil.copytree(os.path.join(ROOT, "omoffice", "dicts", "licenses"), os.path.join(out, "sozlukler"),
                     dirs_exist_ok=True)

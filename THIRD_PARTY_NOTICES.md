@@ -19,6 +19,7 @@ Kaynak koddan çalıştırırken `pip` ile kurulurlar. Lisans metinleri kurulu p
 | [lxml](https://pypi.org/project/lxml/) | BSD-3-Clause |
 | [spylls](https://pypi.org/project/spylls/) | MPL-2.0 |
 | [typing_extensions](https://pypi.org/project/typing-extensions/) | PSF License |
+| [pdfminer.six](https://pypi.org/project/pdfminer.six/) | MIT |
 
 Qt kitaplıkları ayrı DLL dosyaları olarak dağıtılır; LGPL kapsamında kurulu klasördeki Qt ve PySide6 dosyaları
 uyumlu bir sürümle değiştirilebilir. PySide6 ve Qt'nin kaynak kodu: <https://code.qt.io/>
