@@ -13,15 +13,30 @@ Windows için geliştirilir. Çevrimdışı çalışır, ağ bağlantısı kurma
 2. Çalıştırın. Python veya başka bir program gerekmez, yönetici izni istenmez.
 3. Kurulum bitince OmOffice açılır.
 
-Ücretsizdir. 64 bit Windows 10/11 içindir; yaklaşık 50 MB indirir, 185 MB yer kaplar.
+Ücretsizdir. 64 bit Windows 10 (1809) ve 11 içindir; yaklaşık 60 MB indirir, 210 MB yer kaplar.
 
-**"Windows bilgisayarınızı korudu" uyarısı:** Kurulum dosyası henüz dijital olarak imzalanmadığı için çıkabilir.
-**Ek bilgi › Yine de çalıştır** ile devam edebilirsiniz. Dosyanın değişmediğini doğrulamak için yanındaki `.sha256`
-değerini karşılaştırın:
+> **Yalnızca bu sayfadan indirin.** OmOffice'in resmî tek kaynağı bu deponun
+> [Releases](https://github.com/opitmust/omoffice/releases) sayfasıdır. Başka sitelerdeki kopyalar değiştirilmiş
+> olabilir.
+
+**Dosyayı doğrulama:** Her kurulum dosyasının yanında bir `.sha256` dosyası vardır. İndirdiğiniz dosyanın
+değiştirilmediğini görmek için, dosyanın bulunduğu klasörde komut istemine şunu yazın ve çıkan değeri `.sha256`
+dosyasındaki değerle karşılaştırın; tek bir karakter bile farklıysa dosyayı çalıştırmayın:
 
 ```
 certutil -hashfile OmOffice-Setup-<sürüm>.exe SHA256
 ```
+
+**"Windows bilgisayarınızı korudu" uyarısı:** Kurulum dosyası henüz dijital olarak imzalanmadığı için çıkabilir.
+Dosyayı doğruladıysanız **Ek bilgi › Yine de çalıştır** ile devam edebilirsiniz.
+
+**Antivirüs uyarısı:** Python ile paketlenmiş programlar bazı antivirüslerce yanlışlıkla şüpheli işaretlenebilir.
+Emin olmak için dosyayı [VirusTotal](https://www.virustotal.com/)'e yükleyip sonucuna bakabilirsiniz.
+
+**Güncelleme:** Eski sürümü kaldırmanız gerekmez. Yeni sürümün kurulum dosyasını indirip çalıştırın; mevcut
+kurulumun üzerine kurulur, ayarlarınız ve belgeleriniz korunur. Program açıksa kurulum kapatmayı önerir.
+OmOffice yeni sürümü kendisi denetlemez; güncellemeler için Releases sayfasına bakın (GitHub'da **Watch ›
+Custom › Releases** seçeneğiyle yeni sürümlerden haberdar olabilirsiniz).
 
 **Kaldırma:** Windows Ayarları › Uygulamalar › OmOffice › Kaldır. Kaydettiğiniz belgeler silinmez; ayarların ve
 kurtarma kopyalarının da silinip silinmeyeceği sorulur.
@@ -55,13 +70,32 @@ python packaging\build.py
 - **Akademik yazım:** tez, makale, rapor, dilekçe gibi türler için şablonlar ve bölüm rehberi; APA, IEEE ve MLA kaynakça biçimleri
 - **Arayüz:** açık ve koyu tema, odak modu, komut paleti (`Alt+Q`)
 
-## Veri güvenliği
+## Güvenlik ve gizlilik
+
+**Gizlilik**
+
+- OmOffice internete bağlanmaz: veri toplamaz, kullanım istatistiği göndermez, hesap istemez.
+- Belgeleriniz yalnızca sizin seçtiğiniz yere kaydedilir. Kurtarma dosyaları ve hata günlüğü (`omoffice.log`)
+  yalnızca bu bilgisayarda, `%APPDATA%\OmOffice` içinde durur.
+- Belgelerdeki uzak resimler ve ağ yolları yüklenmez; böylece bir belgeyi açtığınız dışarıya haber verilmez.
+
+**Bilgisayarınızın güvenliği**
+
+- Yönetici izni istemez; yalnızca sizin kullanıcı klasörünüze kurulur, sistem ayarlarını değiştirmez.
+- Belgelerdeki makroları, betikleri ve gömülü programları çalıştırmaz.
+- Kötü niyetli dosyalara karşı denetimler vardır: bilgisayardaki dosyaları okumaya çalışan belgeler (XXE),
+  programı kilitlemeye çalışan dosya bombaları (zip bombası, "milyar kahkaha"), bozuk ve sahte dosyalar,
+  zararlı bağlantılar. Bunlar her sürümde `tests\security_test.py` ile sınanır.
+- Kaynak kodu açıktır; programın ne yaptığını herkes inceleyebilir.
+
+**Belgelerinizin güvenliği**
 
 - Kayıt önce geçici dosyaya yazılır ve doğrulanır; asıl dosya ancak kayıt tamamlanınca değişir.
 - Değişiklikler düzenli aralıklarla kurtarma kopyasına yazılır, beklenmedik kapanıştan sonra geri getirilir.
 - "Kaydetme" denilen belgelerin kopyası 7 gün saklanır.
-- Kötü niyetli dosyalara karşı zip bombası, XXE, makro ve zararlı bağlantı denetimleri vardır.
-- Kurtarma dosyaları ve hata günlüğü (`omoffice.log`) yalnızca bu bilgisayarda, `%APPDATA%\OmOffice` içinde durur.
+
+**Güvenlik açığı bildirme:** Bir güvenlik açığı bulursanız lütfen herkese açık Issues yerine bu deponun
+**Security › Report a vulnerability** bölümünden gizli olarak bildirin.
 
 ## Bilinen sınırlar
 
