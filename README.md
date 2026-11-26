@@ -10,7 +10,8 @@ güncelleme denetimi dışında ağ bağlantısı kurmaz.
 
 ## İndirme ve kurulum
 
-1. [Releases](https://github.com/opitmust/omoffice/releases/latest) sayfasından `OmOffice-Setup-<sürüm>.exe` dosyasını indirin.
+1. [Releases](https://github.com/opitmust/omoffice/releases/latest) sayfasında **Assets** bölümünden
+   `OmOffice-Setup-<sürüm>.exe` dosyasını indirin. ("Source code (zip)" kaynak koddur, kurulum dosyası değildir.)
 2. Çalıştırın. Python veya başka bir program gerekmez, yönetici izni istenmez.
 3. Kurulum bitince OmOffice açılır.
 
