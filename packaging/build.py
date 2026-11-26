@@ -14,6 +14,8 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SPEC = os.path.join(ROOT, "packaging", "omoffice.spec")
+# Qt for Python tekerlekleri yalnızca ticari lisans başvurusunu taşır; OmOffice Qt'yi LGPL-3.0 ile kullanır
+QT_PACKAGES = {"PySide6", "PySide6_Essentials", "PySide6_Addons", "shiboken6"}
 PACKAGES = ["PySide6", "PySide6_Essentials", "PySide6_Addons", "shiboken6", "python-docx", "lxml", "spylls",
             "typing_extensions", "pdfminer.six", "pyinstaller"]
 
@@ -40,6 +42,11 @@ def copy_licenses(app_dir):
     shutil.copytree(os.path.join(ROOT, "omoffice", "dicts", "licenses"), os.path.join(out, "sozlukler"),
                     dirs_exist_ok=True)
     for name in PACKAGES:
+        if name in QT_PACKAGES:
+            os.makedirs(os.path.join(out, name), exist_ok=True)
+            shutil.copy(os.path.join(ROOT, "packaging", "licenses", "LGPL-3.0.txt"), os.path.join(out, name))
+            shutil.copy(os.path.join(ROOT, "LICENSE"), os.path.join(out, name, "GPL-3.0.txt"))  # LGPL buna dayanır
+            continue
         dist = md.distribution(name)
         files = [f for f in dist.files or [] if re.search(r"(^|/|\.)(LICEN[CS]E|COPYING|NOTICE)", str(f), re.I)
                  and ".dist-info" in str(f)]

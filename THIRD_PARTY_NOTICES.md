@@ -23,6 +23,8 @@ Kaynak koddan çalıştırırken `pip` ile kurulurlar. Lisans metinleri kurulu p
 
 Qt kitaplıkları ayrı DLL dosyaları olarak dağıtılır; LGPL kapsamında kurulu klasördeki Qt ve PySide6 dosyaları
 uyumlu bir sürümle değiştirilebilir. PySide6 ve Qt'nin kaynak kodu: <https://code.qt.io/>
+LGPL-3.0 metni kurulu programın `licenses/PySide6` klasöründedir. Qt'nin içinde kullandığı üçüncü taraf
+kitaplıkların (FreeType, HarfBuzz, zlib, libpng vb.) lisansları: <https://doc.qt.io/qt-6/licenses-used-in-qt.html>
 
 Kurulum paketi [PyInstaller](https://pyinstaller.org/) (önyükleyicisi GPL istisnasıyla) ve
 [Inno Setup](https://jrsoftware.org/isinfo.php) ile üretilir.
