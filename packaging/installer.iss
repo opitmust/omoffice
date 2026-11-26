@@ -42,6 +42,12 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
+[InstallDelete]
+; Güncellemede önceki sürümün program dosyaları önce silinir: yeni sürümde artık olmayan kitaplıklar
+; (ör. 1.0.0'daki Qt TLS eklentileri ve OpenSSL kopyaları) klasörde kalmasın. Bu klasörde yalnızca
+; program dosyaları vardır; ayarlar ve kurtarma kopyaları %APPDATA%\OmOffice içindedir.
+Type: filesandordirs; Name: "{app}\_internal"
+
 [Files]
 Source: "..\dist\OmOffice\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
