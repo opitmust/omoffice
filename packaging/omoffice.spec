@@ -46,6 +46,13 @@ a = Analysis(
     hiddenimports=["PySide6.QtPdf"],
     excludes=["tkinter", "PySide6.QtWebEngineCore", "PySide6.QtWebEngineWidgets", "PySide6.QtWebEngineQuick"],
 )
+# Qt'nin TLS eklentileri kullanılmaz (güncelleme denetimi Python'un kendi ssl modülünü kullanır). Pakette
+# kalırlarsa PyInstaller, OpenSSL'i derleme bilgisayarının PATH'inden (ör. Git for Windows) toplar; sürümü
+# denetlenmeyen başka bir programın DLL'leri dağıtılmış olur.
+_NO_QT_TLS = ("libssl-3-x64.dll", "libcrypto-3-x64.dll")
+a.binaries = [b for b in a.binaries
+              if not b[0].replace("\\", "/").lower().startswith("pyside6/plugins/tls/")
+              and os.path.basename(b[0]).lower() not in _NO_QT_TLS]
 pyz = PYZ(a.pure)
 exe = EXE(
     pyz, a.scripts, [],

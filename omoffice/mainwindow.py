@@ -27,7 +27,7 @@ from .common import (
     APP_NAME, STYLES, PAPER_SIZES, MARGIN_PRESETS, DEFAULT_SIZE, PageSetup,
     app_data_dir, app_settings, pt2px, resource_dir, image_slot, IMAGE_SLOT_KINDS,
 )
-from . import __version__, theme
+from . import __version__, theme, updates
 from .theme import glyph, text_icon, THEMES, ACCENTS, CURRENT
 from .templates import build as build_template
 from .view import EditorView, Ruler
@@ -255,6 +255,9 @@ class MainWindow(QMainWindow):
         A("start", "Başlangıç Ekranı", self.show_start, None, glyph("\uE80F"))
         A("catalog", "Şablon Kataloğu…", lambda: self.show_start(catalog=True), "Ctrl+Shift+N", glyph("\uE8F1"))
         A("recover", "Kaydedilmemiş Belgeleri Kurtar…", self.show_recovery, None, glyph("\uE777"))
+        A("check_updates", "Güncellemeleri Denetle…", lambda: self.check_updates(manual=True), None, glyph(""))
+        A("auto_update", "Açılışta Güncellemeleri Denetle", self.set_auto_update, None, None, True,
+          "Açıksa OmOffice günde en fazla bir kez GitHub'dan yalnızca en son sürüm numarasını sorar")
         A("shortcuts", "Klavye Kısayolları", self.show_shortcuts, "F1", glyph("\uE765"))
         A("open_folder", "Dosya Konumunu Aç", self.open_folder, None, glyph("\uE838"))
         A("copy_path", "Dosya Yolunu Kopyala", self.copy_path, None, glyph("\uE8C8"))
@@ -781,6 +784,9 @@ class MainWindow(QMainWindow):
         for k in ("start", "palette", "shortcuts"):
             m.addAction(self.actions[k])
         m.addAction("Hakkında", self.about)
+        m.addAction(self.actions["check_updates"])
+        self.actions["auto_update"].setChecked(self.settings.value("update_check") == "1")
+        m.addAction(self.actions["auto_update"])
         m.addSeparator()
         m.addAction(self.actions["quit"])
 
@@ -819,6 +825,12 @@ class MainWindow(QMainWindow):
             sb.addPermanentWidget(w)
         self.view.zoomChanged.connect(self._zoom_changed)
         self.stats_timer = QTimer(self, singleShot=True, interval=350, timeout=self.update_stats)
+        # Yeni sürüm bildirimi: yalnızca denetim yeni bir sürüm bulursa görünür
+        self.update_button = QToolButton()
+        self.update_button.setObjectName("updateButton")
+        self.update_button.setVisible(False)
+        self.update_button.clicked.connect(self.open_releases)
+        sb.insertPermanentWidget(0, self.update_button)
 
     def _build_nav(self):
         self.nav_tree = QTreeWidget()
@@ -1748,6 +1760,89 @@ class MainWindow(QMainWindow):
         self._offer_recovery()
         if self.start_screen and self.settings.value("show_start", "1") == "1":
             self.show_start()
+        QTimer.singleShot(1500, self._startup_update_check)
+
+    # ---- güncelleme denetimi
+    def _startup_update_check(self):
+        """İlk açılışta bir kez izin ister; izin varsa günde en fazla bir kez arka planda denetler."""
+        choice = self.settings.value("update_check")
+        if choice is None:
+            box = QMessageBox(self)
+            box.setIcon(QMessageBox.Icon.Question)
+            box.setWindowTitle("Yeni sürüm bildirimi")
+            box.setText("Yeni bir OmOffice sürümü çıktığında size haber verilsin mi?")
+            box.setInformativeText(
+                "Bunun için OmOffice açılışta, günde en fazla bir kez GitHub'dan yalnızca en son sürümün "
+                "numarasını sorar. Belgeleriniz veya kişisel bilgileriniz gönderilmez; hiçbir şey kendiliğinden "
+                "indirilmez ya da kurulmaz.\n\nBu ayarı daha sonra Dosya menüsünden değiştirebilirsiniz.")
+            yes = box.addButton("Evet, haber ver", QMessageBox.ButtonRole.YesRole)
+            box.addButton("Hayır", QMessageBox.ButtonRole.NoRole)
+            box.setDefaultButton(yes)
+            box.exec()
+            choice = "1" if box.clickedButton() is yes else "0"
+            self.settings.setValue("update_check", choice)
+            self.actions["auto_update"].setChecked(choice == "1")
+        if choice != "1":
+            return
+        last = float(self.settings.value("update_last_check", 0) or 0)
+        if time.time() - last >= updates.CHECK_INTERVAL:
+            self.check_updates(manual=False)
+        elif self.settings.value("update_latest"):
+            self._show_update(self.settings.value("update_latest"))   # daha önce bulunan, henüz kurulmamış sürüm
+
+    def set_auto_update(self, on):
+        self.settings.setValue("update_check", "1" if on else "0")
+        if on:
+            self.check_updates(manual=False)
+        else:
+            self.update_button.setVisible(False)
+
+    def check_updates(self, manual=False):
+        if getattr(self, "_update_job", None) is not None:
+            return
+        if manual:
+            self.statusBar().showMessage("Güncellemeler denetleniyor…", 3000)
+        job = updates.UpdateCheck(self)
+        job.done.connect(lambda latest, err: self._update_result(latest, err, manual))
+        job.finished.connect(job.deleteLater)
+        self._update_job = job
+        job.start()
+
+    def _update_result(self, latest, err, manual):
+        self._update_job = None
+        if latest is None:
+            if manual:
+                QMessageBox.warning(self, "Güncelleme denetimi",
+                                    "Güncellemeler denetlenemedi. İnternet bağlantınızı kontrol edip yeniden deneyin."
+                                    f"\n\nAyrıntı: {err}")
+            return
+        self.settings.setValue("update_last_check", time.time())
+        if updates.is_newer(latest):
+            self.settings.setValue("update_latest", latest)
+            self._show_update(latest)
+            if manual:
+                r = QMessageBox.question(self, "Yeni sürüm var",
+                                         f"OmOffice {latest} yayımlandı (kullandığınız: {__version__}).\n\n"
+                                         "İndirme sayfası tarayıcıda açılsın mı?")
+                if r == QMessageBox.StandardButton.Yes:
+                    self.open_releases()
+        else:
+            self.settings.remove("update_latest")
+            self.update_button.setVisible(False)
+            if manual:
+                QMessageBox.information(self, "Güncelleme denetimi",
+                                        f"OmOffice güncel. Kullandığınız sürüm: {__version__}")
+
+    def _show_update(self, latest):
+        if not updates.is_newer(latest):
+            return
+        self.update_button.setText(f"⬆ Yeni sürüm: {latest}")
+        self.update_button.setToolTip("İndirme sayfasını tarayıcıda açar. Yeni sürümü kurmak için eskisini "
+                                      "kaldırmanız gerekmez.")
+        self.update_button.setVisible(True)
+
+    def open_releases(self):
+        QDesktopServices.openUrl(QUrl(updates.RELEASES_URL))
 
     def show_start(self, catalog=False):
         files = self.settings.value("recent", []) or []

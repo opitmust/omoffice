@@ -14,6 +14,7 @@ Kaynak koddan çalıştırırken `pip` ile kurulurlar. Lisans metinleri kurulu p
 | Paket | Lisans |
 | --- | --- |
 | [Python](https://www.python.org/) | PSF License |
+| [OpenSSL](https://www.openssl.org/) (Python ile gelir; güncelleme denetiminin HTTPS bağlantısı) | Apache-2.0 (metni `Python-LICENSE.txt` içinde) |
 | [PySide6](https://pypi.org/project/PySide6/) (Qt for Python) | LGPL-3.0 |
 | [python-docx](https://pypi.org/project/python-docx/) | MIT |
 | [lxml](https://pypi.org/project/lxml/) | BSD-3-Clause |

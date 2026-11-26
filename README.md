@@ -3,7 +3,8 @@
 # OmOffice
 
 Python ve PySide6 ile yazılmış, Türkçe arayüzlü, `.docx` odaklı masaüstü belge düzenleyici.
-Windows için geliştirilir. Çevrimdışı çalışır, ağ bağlantısı kurmaz ve belgelerdeki makroları çalıştırmaz.
+Windows için geliştirilir. Çevrimdışı çalışır, belgelerdeki makroları çalıştırmaz; izin verdiğiniz isteğe bağlı
+güncelleme denetimi dışında ağ bağlantısı kurmaz.
 
 > Microsoft ile bir bağlantısı yoktur; "Word" ve "Office", Microsoft'un ticari markalarıdır.
 
@@ -35,8 +36,13 @@ Emin olmak için dosyayı [VirusTotal](https://www.virustotal.com/)'e yükleyip 
 
 **Güncelleme:** Eski sürümü kaldırmanız gerekmez. Yeni sürümün kurulum dosyasını indirip çalıştırın; mevcut
 kurulumun üzerine kurulur, ayarlarınız ve belgeleriniz korunur. Program açıksa kurulum kapatmayı önerir.
-OmOffice yeni sürümü kendisi denetlemez; güncellemeler için Releases sayfasına bakın (GitHub'da **Watch ›
-Custom › Releases** seçeneğiyle yeni sürümlerden haberdar olabilirsiniz).
+
+
+**Yeni sürüm bildirimi (1.1.0 ve sonrası):** OmOffice ilk açılışta yeni sürümlerden haberdar edilmek isteyip
+istemediğinizi sorar. İzin verirseniz yeni sürüm çıktığında durum çubuğunda **Yeni sürüm** düğmesi belirir;
+tıklayınca indirme sayfası açılır. Program kendiliğinden hiçbir şey indirmez veya kurmaz. Elle denetlemek ya da
+ayarı değiştirmek için: **Dosya › Güncellemeleri Denetle** ve **Dosya › Açılışta Güncellemeleri Denetle**.
+GitHub'da **Watch › Custom › Releases** seçeneğiyle de yeni sürümlerden haberdar olabilirsiniz.
 
 **Kaldırma:** Windows Ayarları › Uygulamalar › OmOffice › Kaldır. Kaydettiğiniz belgeler silinmez; ayarların ve
 kurtarma kopyalarının da silinip silinmeyeceği sorulur.
@@ -74,7 +80,10 @@ python packaging\build.py
 
 **Gizlilik**
 
-- OmOffice internete bağlanmaz: veri toplamaz, kullanım istatistiği göndermez, hesap istemez.
+- OmOffice veri toplamaz, kullanım istatistiği göndermez, hesap istemez.
+- Tek ağ bağlantısı isteğe bağlı güncelleme denetimidir ve yalnızca siz izin verirseniz yapılır: günde en fazla
+  bir kez GitHub'dan (`api.github.com`) en son sürümün numarası sorulur. İstekte belge, ad, sürüm ya da başka
+  kişisel bilgi gönderilmez. İzin vermezseniz OmOffice hiç ağa çıkmaz.
 - Belgeleriniz yalnızca sizin seçtiğiniz yere kaydedilir. Kurtarma dosyaları ve hata günlüğü (`omoffice.log`)
   yalnızca bu bilgisayarda, `%APPDATA%\OmOffice` içinde durur.
 - Belgelerdeki uzak resimler ve ağ yolları yüklenmez; böylece bir belgeyi açtığınız dışarıya haber verilmez.
@@ -99,7 +108,7 @@ python packaging\build.py
 
 ## Bilinen sınırlar
 
-- Henüz yok: sütunlar, metin kutuları ve şekiller, denklemler, belge karşılaştırma, `.doc` ve `.rtf` içe aktarma, yorum yanıtları, otomatik güncelleme.
+- Henüz yok: sütunlar, metin kutuları ve şekiller, denklemler, belge karşılaştırma, `.doc` ve `.rtf` içe aktarma, yorum yanıtları, güncellemeyi kendiliğinden indirip kurma (yeni sürüm yalnızca bildirilir).
 - Kurulum dosyası dijital olarak imzalı değildir.
 - Word yazı genişliklerini biraz farklı hesaplayabildiğinden uzun metinlerde satırlar farklı yerden kırılabilir.
 

@@ -355,6 +355,41 @@ div.WordSection1 {page:WordSection1;}
     app.processEvents()
     check(sb.value() > before, f"tekerlek sayfanın üstünde kaydırır: {before} → {sb.value()}")
 
+    # Güncelleme denetimi (ağa çıkmadan: GitHub yanıtı taklit edilir)
+    import time
+    from omoffice import updates
+    from PySide6.QtWidgets import QMessageBox
+    check(updates.is_newer("1.10.0", "1.9.9") and not updates.is_newer("1.0.0", "1.0.0")
+          and not updates.is_newer("bozuk", "1.0.0") and updates.is_newer("v2.0", "1.10.3"),
+          "sürüm karşılaştırması (1.10 > 1.9, aynı sürüm yeni değil, bozuk etiket yok sayılır)")
+    real_fetch, real_info, real_q = updates.fetch_latest, QMessageBox.information, QMessageBox.question
+    shown = []
+    QMessageBox.information = lambda *a, **k: shown.append(a[2])
+    QMessageBox.question = lambda *a, **k: (shown.append(a[2]), QMessageBox.StandardButton.No)[1]
+
+    def run_check(answer):
+        updates.fetch_latest = lambda timeout=None: answer
+        win.check_updates(manual=True)
+        t0 = time.time()
+        while win._update_job is not None and time.time() - t0 < 10:
+            app.processEvents()
+    try:
+        run_check("99.0.0")
+        check(win.update_button.isVisible() and "99.0.0" in win.update_button.text()
+              and "99.0.0" in (shown[-1] if shown else ""), f"yeni sürüm bildirilir: {win.update_button.text()!r}")
+        run_check(__import__("omoffice").__version__)
+        check(not win.update_button.isVisible() and "güncel" in (shown[-1] if shown else ""),
+              "güncel sürümde bildirim kalkar")
+        updates.fetch_latest = lambda timeout=None: (_ for _ in ()).throw(AssertionError("ağa çıkıldı"))
+        win.settings.setValue("update_check", "0")
+        win._startup_update_check()
+        check(win._update_job is None, "izin verilmediyse açılışta denetim yapılmaz")
+    finally:
+        updates.fetch_latest, QMessageBox.information, QMessageBox.question = real_fetch, real_info, real_q
+        win.settings.remove("update_check")
+        win.settings.remove("update_latest")
+        win.settings.remove("update_last_check")
+
     # Tüm belgede büyük harf düzeltmesi
     win._set_doc(new_document(), PageSetup(), None)
     e.autocorrect = False
