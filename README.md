@@ -2,6 +2,9 @@
 
 # OmOffice
 
+<p align="center"><b><a href="https://github.com/opitmust/omoffice/releases/latest">⬇ OmOffice'i indir (Windows kurulum dosyası)</a></b><br>
+<sub>Açılan sayfada <b>Assets</b> bölümündeki <code>OmOffice-Setup-…exe</code> dosyasını indirin.</sub></p>
+
 Python ve PySide6 ile yazılmış, Türkçe arayüzlü, `.docx` odaklı masaüstü belge düzenleyici.
 Windows için geliştirilir. Çevrimdışı çalışır, belgelerdeki makroları çalıştırmaz; izin verdiğiniz isteğe bağlı
 güncelleme denetimi dışında ağ bağlantısı kurmaz.
